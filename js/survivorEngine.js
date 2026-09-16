@@ -3,6 +3,8 @@
  * 100% Client-Side Pure JS Math & Dynamic Lookahead Solver
  */
 
+import { OddsUtils, normalizeGame } from './contracts.js';
+
 export class SurvivorEngine {
   constructor(options = {}) {
     this.defaultPoolSize = options.poolSize || 100;
@@ -366,7 +368,7 @@ export class SurvivorEngine {
   }
 
   /**
-   * Calculate point spread cover probability for Home and Away
+   * Calculate point spread cover probability for Home and Away, including discrete push probability on flat lines
    */
   calculateCoverProbability(homeWinProb, homeSpread) {
     const clampedProb = Math.max(0.01, Math.min(0.99, homeWinProb));
@@ -375,13 +377,26 @@ export class SurvivorEngine {
     const deltaPoints = projectedHomeMargin + homeSpread;
     const zCover = deltaPoints / 13.5;
     const rawHomeCover = 0.5 * (1 + this.erf(zCover / Math.SQRT2));
-    
-    const homeCoverProb = Math.max(0.44, Math.min(0.58, rawHomeCover));
-    const awayCoverProb = 1.0 - homeCoverProb;
+
+    let pushProb = 0.0;
+    // Flat lines (e.g. -3.0, -7.0, 0.0) account for discrete push mass around margin === -homeSpread
+    if (OddsUtils.isFlatLine(homeSpread)) {
+      const zPushUpper = (deltaPoints + 0.5) / 13.5;
+      const zPushLower = (deltaPoints - 0.5) / 13.5;
+      const rawPush = 0.5 * (this.erf(zPushUpper / Math.SQRT2) - this.erf(zPushLower / Math.SQRT2));
+      // Calibrate realistic key number push rates (3, 7, 6, 10, etc.)
+      pushProb = Math.max(0.02, Math.min(0.12, Math.abs(rawPush)));
+    }
+
+    const nonPushMass = 1.0 - pushProb;
+    const homeCoverProb = Math.max(0.40, Math.min(0.58, rawHomeCover * nonPushMass));
+    const awayCoverProb = Math.max(0.40, Math.min(0.58, (1.0 - rawHomeCover) * nonPushMass));
 
     return {
       homeCoverProb: Number(homeCoverProb.toFixed(4)),
       awayCoverProb: Number(awayCoverProb.toFixed(4)),
+      pushProb: Number(pushProb.toFixed(4)),
+      isFlatLine: pushProb > 0,
       projectedMargin: Number(projectedHomeMargin.toFixed(1)),
       deltaPoints: Number(deltaPoints.toFixed(1))
     };

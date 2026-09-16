@@ -4,6 +4,8 @@
  * uncorrelated multiplier calculations, vig/edge metrics, and SGP correlation analysis.
  */
 
+import { OddsUtils, normalizeGame, createBetLeg, evaluateLegOutcome, resolveParlayTicketIteration } from './contracts.js';
+
 export class ParlayEngine {
   constructor() {
     this.legs = [];
@@ -426,6 +428,11 @@ export class ParlayEngine {
       potentialPayout: Number(potentialPayout.toFixed(2)),
       potentialProfit: Number(potentialProfit.toFixed(2)),
       iterations,
+      pushProbabilityPct: Number(((simResults?.pushProbability || 0) * 100).toFixed(2)),
+      fullWinProbPct: Number(((simResults?.fullWinProbability || simWinProb) * 100).toFixed(2)),
+      exactSimulatedEvPct: simResults?.exactSimulatedEvPct !== undefined ? Number(simResults.exactSimulatedEvPct.toFixed(2)) : null,
+      hasFlatLines: this.legs.some(l => OddsUtils.isFlatLine(l.lineValue)),
+      legPushStats: simResults?.legPushStats || [],
       ticketValue: {
         badge: ticketValueBadge,
         badgeClass: ticketValueBadgeClass,
@@ -489,7 +496,12 @@ export class ParlayEngine {
     });
 
     const uniqueGameIds = Object.keys(gameBaselines);
-    let winCount = 0;
+    let fullWinCount = 0;
+    let reducedWinCount = 0;
+    let allPushCount = 0;
+    let lossCount = 0;
+    let totalReturn = 0;
+    const legPushCounts = new Array(this.legs.length).fill(0);
 
     // Marsaglia Polar / Box-Muller normal sampling helper
     const sampleNormal = (mean, stdDev) => {
@@ -515,89 +527,59 @@ export class ParlayEngine {
         };
       });
 
-      // Step B: Evaluate each ticket leg against the simulated scoreline
-      let ticketFailed = false;
-      let nonPushWins = 0;
+      // Track individual leg push frequencies
+      this.legs.forEach((leg, idx) => {
+        const outcome = evaluateLegOutcome(leg, simScores[leg.gameId]);
+        if (outcome === 'PUSH') legPushCounts[idx]++;
+      });
 
-      for (let i = 0; i < this.legs.length; i++) {
-        const leg = this.legs[i];
-        const sim = simScores[leg.gameId];
-        if (!sim) continue;
+      // Step B: Resolve Ticket Outcome with American push rules
+      const res = resolveParlayTicketIteration(this.legs, simScores);
+      totalReturn += res.returnMultiplier;
 
-        let legResult = 'LOSS'; // 'WIN' | 'PUSH' | 'LOSS'
-
-        switch (leg.marketCategory) {
-          case 'spread': {
-            const isHome = leg.selection === leg.homeTeam;
-            const effectiveSpread = Number(leg.lineValue);
-            const teamScore = isHome ? sim.homeScore : sim.awayScore;
-            const oppScore = isHome ? sim.awayScore : sim.homeScore;
-            const finalWithSpread = teamScore + effectiveSpread;
-
-            if (finalWithSpread > oppScore) {
-              legResult = 'WIN';
-            } else if (finalWithSpread === oppScore) {
-              legResult = 'PUSH'; // Whole-number push
-            } else {
-              legResult = 'LOSS';
-            }
-            break;
-          }
-
-          case 'moneyline': {
-            const isHome = leg.selection === leg.homeTeam;
-            if (isHome) {
-              if (sim.homeScore > sim.awayScore) legResult = 'WIN';
-              else if (sim.homeScore === sim.awayScore) legResult = 'PUSH';
-              else legResult = 'LOSS';
-            } else {
-              if (sim.awayScore > sim.homeScore) legResult = 'WIN';
-              else if (sim.awayScore === sim.homeScore) legResult = 'PUSH';
-              else legResult = 'LOSS';
-            }
-            break;
-          }
-
-          case 'total': {
-            const totalLine = Number(leg.lineValue);
-            if (leg.marketType === 'total_over') {
-              if (sim.totalScore > totalLine) legResult = 'WIN';
-              else if (sim.totalScore === totalLine) legResult = 'PUSH';
-              else legResult = 'LOSS';
-            } else {
-              if (sim.totalScore < totalLine) legResult = 'WIN';
-              else if (sim.totalScore === totalLine) legResult = 'PUSH';
-              else legResult = 'LOSS';
-            }
-            break;
-          }
-
-          default:
-            legResult = 'WIN';
-        }
-
-        if (legResult === 'LOSS') {
-          ticketFailed = true;
-          break;
-        } else if (legResult === 'WIN') {
-          nonPushWins++;
-        }
-      }
-
-      // Ticket is a simulation win if no legs lost and at least 1 leg won
-      if (!ticketFailed && (nonPushWins > 0 || this.legs.length === 0)) {
-        winCount++;
+      if (res.outcome === 'FULL_WIN') {
+        fullWinCount++;
+      } else if (res.outcome === 'REDUCED_WIN') {
+        reducedWinCount++;
+      } else if (res.outcome === 'ALL_PUSH') {
+        allPushCount++;
+      } else {
+        lossCount++;
       }
     }
 
-    const winProbability = Number((winCount / iterations).toFixed(4));
+    const totalWinCount = fullWinCount + reducedWinCount;
+    const winProbability = Number((totalWinCount / iterations).toFixed(4));
+    const fullWinProbability = Number((fullWinCount / iterations).toFixed(4));
+    const pushProbability = Number(((reducedWinCount + allPushCount) / iterations).toFixed(4));
+    const allPushProbability = Number((allPushCount / iterations).toFixed(4));
+    const meanSimulatedReturn = Number((totalReturn / iterations).toFixed(4));
+    const exactSimulatedEvPct = Number(((meanSimulatedReturn - 1) * 100).toFixed(2));
     const fairAmericanOdds = this.probToAmerican(winProbability);
 
+    const legPushStats = this.legs.map((leg, idx) => ({
+      legId: leg.id,
+      label: leg.label,
+      pushCount: legPushCounts[idx],
+      pushPct: Number(((legPushCounts[idx] / iterations) * 100).toFixed(1)),
+      isFlatLine: OddsUtils.isFlatLine(leg.lineValue)
+    }));
+
     return {
-      winCount,
+      winCount: totalWinCount,
+      fullWinCount,
+      reducedWinCount,
+      allPushCount,
+      lossCount,
       iterations,
       winProbability,
-      fairAmericanOdds
+      fullWinProbability,
+      pushProbability,
+      allPushProbability,
+      meanSimulatedReturn,
+      exactSimulatedEvPct,
+      fairAmericanOdds,
+      legPushStats
     };
   }
 

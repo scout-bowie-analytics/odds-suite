@@ -1572,6 +1572,32 @@ body {
   transform: translateY(0);
 }
 
+.btn-auto-build.loading {
+  opacity: 0.88;
+  cursor: wait !important;
+  pointer-events: none;
+  background: linear-gradient(135deg, #d97706, #b45309) !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+  animation: pulse-build 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-build {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+.slip-leg-push-tag {
+  font-size: 8.5px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 .quick-build-hint {
   font-size: 10px;
   color: var(--text-dim);

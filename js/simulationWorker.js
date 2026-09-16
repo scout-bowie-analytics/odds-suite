@@ -1,14 +1,37 @@
 /**
- * 🐾 SCOUT BOWIE NFL MONTE CARLO SIMULATION WORKER
+ * 🐾 SCOUT BOWIE NFL MONTE CARLO SIMULATION WORKER (v3.8.0)
  * High-performance Web Worker executing:
- * 1. 10,000-Iteration Survivor Pool Simulations
- * 2. 10,000-Iteration Same-Game Parlay (SGP) & Multi-Game Parlay Simulations
+ * 1. Asynchronous Auto-Ticket Generation & Candidate EV Optimization
+ * 2. 10,000-Iteration Same-Game Parlay (SGP) & Multi-Game Parlay Simulations with Multi-Outcome Push Settlement
+ * 3. 10,000-Iteration Survivor Pool Simulations
  */
+
+import { ParlayEngine } from './parlayEngine.js';
+import { OddsUtils, evaluateLegOutcome, resolveParlayTicketIteration } from './contracts.js';
 
 self.onmessage = function(e) {
   const data = e.data || {};
 
-  // Check action type
+  // Action 1: Asynchronous Auto-Ticket Generation (Offloaded from Main UI Thread)
+  if (data.action === 'GENERATE_AUTO_TICKET') {
+    const { slateData = [], week = 1, options = {} } = data;
+    try {
+      const parlayEngine = new ParlayEngine();
+      const generatedLegs = parlayEngine.generateAutoTicket(slateData, week, options);
+      parlayEngine.legs = generatedLegs;
+      const simResults = parlayEngine.runSyncSimulation(slateData, 10000);
+      self.postMessage({
+        type: 'auto_ticket_complete',
+        generatedLegs,
+        simResults
+      });
+    } catch (err) {
+      self.postMessage({ type: 'auto_ticket_error', error: err.message });
+    }
+    return;
+  }
+
+  // Action 2: 10,000-Iteration Parlay & SGP Simulation with Multi-Outcome Push Settlement
   if (data.action === 'SIMULATE_PARLAY') {
     const { legs = [], slateData = [], iterations = 10000 } = data;
     try {
@@ -22,7 +45,7 @@ self.onmessage = function(e) {
     return;
   }
 
-  // Default: Survivor 10k Simulation
+  // Action 3: Survivor 10,000-Pool Simulation
   const { path: userPath, slateData, poolSize = 100, iterations = 10000, targetHorizon = 11 } = data;
 
   try {
@@ -43,10 +66,14 @@ function runParlaySimulation(legs, slateData, iterations = 10000, progressCb) {
   if (!Array.isArray(legs) || legs.length === 0) {
     return {
       winProbability: 0,
+      fullWinProbability: 0,
+      pushProbability: 0,
       winCount: 0,
       iterations,
       fairAmericanOdds: 100,
-      pushCount: 0
+      pushCount: 0,
+      exactSimulatedEvPct: 0,
+      legPushStats: []
     };
   }
 
@@ -66,7 +93,6 @@ function runParlaySimulation(legs, slateData, iterations = 10000, progressCb) {
       const total = gameObj ? Number(gameObj.total || 44) : 44.0;
 
       // Implied Team Score Baselines:
-      // HomeMean = (Total - Spread)/2, AwayMean = (Total + Spread)/2
       const homeMean = (total - spread) / 2;
       const awayMean = (total + spread) / 2;
 
@@ -84,8 +110,12 @@ function runParlaySimulation(legs, slateData, iterations = 10000, progressCb) {
   });
 
   const uniqueGameIds = Object.keys(gameBaselines);
-  let winCount = 0;
-  let totalPushCount = 0;
+  let fullWinCount = 0;
+  let reducedWinCount = 0;
+  let allPushCount = 0;
+  let lossCount = 0;
+  let totalReturn = 0;
+  const legPushCounts = new Array(legs.length).fill(0);
   const reportInterval = Math.max(500, Math.floor(iterations / 20));
 
   // Marsaglia Polar / Box-Muller normal sampling helper
@@ -116,104 +146,59 @@ function runParlaySimulation(legs, slateData, iterations = 10000, progressCb) {
       };
     });
 
-    // Step B: Evaluate each ticket leg against the simulated scoreline
-    let ticketFailed = false;
-    let nonPushWins = 0;
-    let runPushes = 0;
+    // Track individual leg pushes
+    legs.forEach((leg, idx) => {
+      const outcome = evaluateLegOutcome(leg, simScores[leg.gameId]);
+      if (outcome === 'PUSH') legPushCounts[idx]++;
+    });
 
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const sim = simScores[leg.gameId];
-      if (!sim) continue;
+    // Step B: Resolve Ticket Outcome with American push rules
+    const res = resolveParlayTicketIteration(legs, simScores);
+    totalReturn += res.returnMultiplier;
 
-      let legResult = 'LOSS'; // 'WIN' | 'PUSH' | 'LOSS'
-
-      switch (leg.marketCategory) {
-        case 'spread': {
-          const isHome = leg.selection === leg.homeTeam;
-          const effectiveSpread = Number(leg.lineValue);
-          const teamScore = isHome ? sim.homeScore : sim.awayScore;
-          const oppScore = isHome ? sim.awayScore : sim.homeScore;
-          const finalWithSpread = teamScore + effectiveSpread;
-
-          if (finalWithSpread > oppScore) {
-            legResult = 'WIN';
-          } else if (finalWithSpread === oppScore) {
-            legResult = 'PUSH'; // Whole-number push
-          } else {
-            legResult = 'LOSS';
-          }
-          break;
-        }
-
-        case 'moneyline': {
-          const isHome = leg.selection === leg.homeTeam;
-          if (isHome) {
-            if (sim.homeScore > sim.awayScore) legResult = 'WIN';
-            else if (sim.homeScore === sim.awayScore) legResult = 'PUSH';
-            else legResult = 'LOSS';
-          } else {
-            if (sim.awayScore > sim.homeScore) legResult = 'WIN';
-            else if (sim.awayScore === sim.homeScore) legResult = 'PUSH';
-            else legResult = 'LOSS';
-          }
-          break;
-        }
-
-        case 'total': {
-          const totalLine = Number(leg.lineValue);
-          if (leg.marketType === 'total_over') {
-            if (sim.totalScore > totalLine) legResult = 'WIN';
-            else if (sim.totalScore === totalLine) legResult = 'PUSH';
-            else legResult = 'LOSS';
-          } else {
-            if (sim.totalScore < totalLine) legResult = 'WIN';
-            else if (sim.totalScore === totalLine) legResult = 'PUSH';
-            else legResult = 'LOSS';
-          }
-          break;
-        }
-
-        default:
-          legResult = 'WIN';
-      }
-
-      if (legResult === 'LOSS') {
-        ticketFailed = true;
-        break;
-      } else if (legResult === 'WIN') {
-        nonPushWins++;
-      } else if (legResult === 'PUSH') {
-        runPushes++;
-      }
-    }
-
-    // Ticket is a simulation win if no legs lost and at least 1 leg won
-    if (!ticketFailed && (nonPushWins > 0 || legs.length === 0)) {
-      winCount++;
-      totalPushCount += runPushes;
-    }
-  }
-
-  const winProbability = Number((winCount / iterations).toFixed(4));
-  
-  // Fair American odds conversion
-  let fairAmericanOdds = 100;
-  if (winProbability > 0) {
-    const dec = 1 / winProbability;
-    if (dec >= 2.0) {
-      fairAmericanOdds = Math.round((dec - 1) * 100);
+    if (res.outcome === 'FULL_WIN') {
+      fullWinCount++;
+    } else if (res.outcome === 'REDUCED_WIN') {
+      reducedWinCount++;
+    } else if (res.outcome === 'ALL_PUSH') {
+      allPushCount++;
     } else {
-      fairAmericanOdds = -Math.round(100 / (dec - 1));
+      lossCount++;
     }
   }
+
+  const totalWinCount = fullWinCount + reducedWinCount;
+  const winProbability = Number((totalWinCount / iterations).toFixed(4));
+  const fullWinProbability = Number((fullWinCount / iterations).toFixed(4));
+  const pushProbability = Number(((reducedWinCount + allPushCount) / iterations).toFixed(4));
+  const allPushProbability = Number((allPushCount / iterations).toFixed(4));
+  const meanSimulatedReturn = Number((totalReturn / iterations).toFixed(4));
+  const exactSimulatedEvPct = Number(((meanSimulatedReturn - 1) * 100).toFixed(2));
+  const fairAmericanOdds = OddsUtils.probToAmerican(winProbability);
+
+  const legPushStats = legs.map((leg, idx) => ({
+    legId: leg.id,
+    label: leg.label,
+    pushCount: legPushCounts[idx],
+    pushPct: Number(((legPushCounts[idx] / iterations) * 100).toFixed(1)),
+    isFlatLine: OddsUtils.isFlatLine(leg.lineValue)
+  }));
 
   return {
-    winCount,
+    winCount: totalWinCount,
+    fullWinCount,
+    reducedWinCount,
+    allPushCount,
+    lossCount,
     iterations,
     winProbability,
+    fullWinProbability,
+    pushProbability,
+    allPushProbability,
+    meanSimulatedReturn,
+    exactSimulatedEvPct,
     fairAmericanOdds,
-    pushCount: totalPushCount
+    legPushStats
   };
 }
 
@@ -293,7 +278,6 @@ function runMonteCarloSimulation(userPath, slateData, poolSize, iterations, targ
       if (userAlive && !userSurvivesThisWeek) {
         userAlive = false;
         if (survivingOpponents === 0 && opponentsAlive > 0) {
-          // Everyone died in this same week: split pot
           totalWinEquity += (1 / (1 + opponentsAlive));
           poolFinishWeek = w;
           poolEndedEarly = true;
@@ -301,7 +285,6 @@ function runMonteCarloSimulation(userPath, slateData, poolSize, iterations, targ
         }
       } else if (userAlive && userSurvivesThisWeek) {
         if (survivingOpponents === 0) {
-          // User solo win!
           totalWinEquity += 1.0;
           poolFinishWeek = w;
           poolEndedEarly = true;

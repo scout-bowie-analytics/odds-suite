@@ -5,6 +5,7 @@
 
 import { SurvivorEngine } from './survivorEngine.js';
 import { ParlayEngine } from './parlayEngine.js';
+import { OddsUtils, normalizeGame, createBetLeg } from './contracts.js';
 
 class OddsSuiteApp {
   constructor() {
@@ -32,7 +33,8 @@ class OddsSuiteApp {
       // Auto-Ticket Generator State
       autoBuildLegs: 3,
       autoBuildStrategy: 'best_value', // 'high_win' | 'best_value'
-      autoBuildAccordionOpen: false
+      autoBuildAccordionOpen: false,
+      isAutoBuilding: false
     };
 
     this.worker = null;
@@ -59,10 +61,10 @@ class OddsSuiteApp {
 
   initWorker() {
     try {
-      // Use cache-busting timestamp to ensure latest simulation worker logic is loaded
-      this.worker = new Worker('js/simulationWorker.js?v=' + Date.now());
+      // Use module worker with cache versioning for fast async simulation
+      this.worker = new Worker('js/simulationWorker.js?v=3.8.0', { type: 'module' });
       this.worker.onmessage = (e) => {
-        const { type, percent, results, error } = e.data;
+        const { type, percent, results, error, generatedLegs, simResults } = e.data || {};
         
         // 1. Survivor Sim Events
         if (type === 'progress') {
@@ -90,11 +92,35 @@ class OddsSuiteApp {
           this.state.isParlaySimulating = false;
           this.runSyncParlayFallback();
         }
+
+        // 3. Asynchronous Auto-Ticket Generator Events (Non-blocking)
+        else if (type === 'auto_ticket_complete') {
+          this.state.isAutoBuilding = false;
+          this.parlayEngine.clearSlip();
+          (generatedLegs || []).forEach(leg => this.parlayEngine.addLeg(leg));
+          this.state.parlaySimResults = simResults;
+          this.state.autoBuildAccordionOpen = false;
+
+          const stratName = this.state.autoBuildStrategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
+          this.showToast(`⚡ Auto-Generated ${(generatedLegs || []).length}-Leg Ticket (${stratName})! 🎯`);
+
+          this.renderParlaySlate();
+          this.renderBetSlip();
+        } else if (type === 'auto_ticket_error') {
+          console.error('Worker auto-ticket error:', error);
+          this.state.isAutoBuilding = false;
+          this.runSyncAutoGenerateFallback(this.state.autoBuildLegs || 3, this.state.autoBuildStrategy || 'best_value');
+        }
       };
 
-      this.worker.onerror = () => {
+      this.worker.onerror = (err) => {
+        console.warn('Worker runtime error, falling back to sync:', err);
         if (this.state.isSimulating) this.runSyncFallback();
         if (this.state.isParlaySimulating) this.runSyncParlayFallback();
+        if (this.state.isAutoBuilding) {
+          this.state.isAutoBuilding = false;
+          this.runSyncAutoGenerateFallback(this.state.autoBuildLegs || 3, this.state.autoBuildStrategy || 'best_value');
+        }
       };
     } catch (e) {
       console.warn('Web Worker fallback:', e);
@@ -1327,31 +1353,67 @@ class OddsSuiteApp {
   autoGenerateTicket() {
     const legsCount = this.state.autoBuildLegs || 3;
     const strategy = this.state.autoBuildStrategy || 'best_value';
-    const generatedLegs = this.parlayEngine.generateAutoTicket(
-      this.state.slateData,
-      this.state.activeWeek,
-      { legsCount, strategy }
-    );
 
-    if (!generatedLegs || generatedLegs.length === 0) {
-      this.showToast(`⚠️ Could not auto-generate ticket for Week ${this.state.activeWeek}.`);
-      return;
+    // 1. Instant loading UI feedback (no main thread lockup)
+    this.state.isAutoBuilding = true;
+    this.renderBetSlip();
+
+    // 2. Offload to Web Worker thread if active
+    if (this.worker) {
+      try {
+        this.worker.postMessage({
+          action: 'GENERATE_AUTO_TICKET',
+          slateData: this.state.slateData,
+          week: this.state.activeWeek,
+          options: { legsCount, strategy }
+        });
+        return;
+      } catch (e) {
+        console.warn('Worker postMessage failed, falling back to sync:', e);
+      }
     }
 
-    this.parlayEngine.clearSlip();
-    generatedLegs.forEach(leg => {
-      this.parlayEngine.addLeg(leg);
-    });
+    // 3. Fallback: yield to UI thread so button renders loading state before simulation runs
+    setTimeout(() => {
+      this.runSyncAutoGenerateFallback(legsCount, strategy);
+    }, 25);
+  }
 
-    // Close accordion if open
-    this.state.autoBuildAccordionOpen = false;
+  runSyncAutoGenerateFallback(legsCount, strategy) {
+    try {
+      const generatedLegs = this.parlayEngine.generateAutoTicket(
+        this.state.slateData,
+        this.state.activeWeek,
+        { legsCount, strategy }
+      );
 
-    const stratName = strategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
-    this.showToast(`⚡ Auto-Generated ${generatedLegs.length}-Leg Ticket (${stratName})! 🎯`);
+      if (!generatedLegs || generatedLegs.length === 0) {
+        this.showToast(`⚠️ Could not auto-generate ticket for Week ${this.state.activeWeek}.`);
+        this.state.isAutoBuilding = false;
+        this.renderBetSlip();
+        return;
+      }
 
-    this.renderParlaySlate();
-    this.renderBetSlip();
-    this.resimulateBetSlip();
+      this.parlayEngine.clearSlip();
+      generatedLegs.forEach(leg => {
+        this.parlayEngine.addLeg(leg);
+      });
+
+      this.state.autoBuildAccordionOpen = false;
+      this.state.isAutoBuilding = false;
+
+      const stratName = strategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
+      this.showToast(`⚡ Auto-Generated ${generatedLegs.length}-Leg Ticket (${stratName})! 🎯`);
+
+      this.renderParlaySlate();
+      this.renderBetSlip();
+      this.resimulateBetSlip();
+    } catch (err) {
+      console.error('Sync auto-generate fallback error:', err);
+      this.state.isAutoBuilding = false;
+      this.renderBetSlip();
+      this.showToast(`⚠️ Error auto-generating ticket.`);
+    }
   }
 
   renderBetSlip() {
@@ -1419,8 +1481,8 @@ class OddsSuiteApp {
                     </button>
                   </div>
                 </div>
-                <button class="btn-auto-build" onclick="autoGenerateTicket()" style="margin-top:8px;">
-                  <span>⚡ Auto-Generate New Ticket</span>
+                <button class="btn-auto-build ${this.state.isAutoBuilding ? 'loading' : ''}" onclick="autoGenerateTicket()" ${this.state.isAutoBuilding ? 'disabled' : ''} style="margin-top:8px;">
+                  <span>${this.state.isAutoBuilding ? '⚡ Calculating 10k Monte Carlo...' : '⚡ Auto-Generate New Ticket'}</span>
                 </button>
               </div>
             ` : ''}
@@ -1465,8 +1527,8 @@ class OddsSuiteApp {
               </div>
             </div>
 
-            <button class="btn-auto-build" onclick="autoGenerateTicket()">
-              <span>⚡ Auto-Generate Ticket</span>
+            <button class="btn-auto-build ${this.state.isAutoBuilding ? 'loading' : ''}" onclick="autoGenerateTicket()" ${this.state.isAutoBuilding ? 'disabled' : ''}>
+              <span>${this.state.isAutoBuilding ? '⚡ Calculating 10k Monte Carlo...' : '⚡ Auto-Generate Ticket'}</span>
             </button>
 
             <div class="quick-build-hint">
@@ -1480,12 +1542,16 @@ class OddsSuiteApp {
           if (leg.marketCategory === 'total') marketTag = 'TOTAL';
           if (leg.marketCategory === 'moneyline') marketTag = 'MONEYLINE';
 
+          const isFlat = leg.isFlatLine || OddsUtils.isFlatLine(leg.lineValue);
+          const pushTag = isFlat ? `<span class="slip-leg-push-tag" title="Flat line: Push reverts to reduced parlay on exact margin">PUSH-ELIGIBLE</span>` : '';
+
           return `
             <div class="slip-leg-item">
               <div class="slip-leg-info">
                 <div class="slip-leg-title">
                   <span>${leg.label}</span>
                   <span class="slip-leg-market-tag">${marketTag}</span>
+                  ${pushTag}
                 </div>
                 <div class="slip-leg-matchup">${leg.matchup} • Week ${leg.week}</div>
               </div>
@@ -1548,7 +1614,13 @@ class OddsSuiteApp {
     }
 
     if (winProbEl) winProbEl.textContent = `${analytics.simWinProbPct}%`;
-    if (fairOddsSubEl) fairOddsSubEl.textContent = `Fair True Odds: ${this.parlayEngine.formatAmerican(analytics.fairAmericanOdds)}`;
+    if (fairOddsSubEl) {
+      if (analytics.pushProbabilityPct > 0) {
+        fairOddsSubEl.textContent = `Fair True Odds: ${this.parlayEngine.formatAmerican(analytics.fairAmericanOdds)} • ${analytics.pushProbabilityPct}% Push Prob`;
+      } else {
+        fairOddsSubEl.textContent = `Fair True Odds: ${this.parlayEngine.formatAmerican(analytics.fairAmericanOdds)}`;
+      }
+    }
 
     // 1. Ticket Value (Plain-English)
     if (evBadgeEl) {
@@ -1558,7 +1630,11 @@ class OddsSuiteApp {
     }
 
     if (vigSubEl) {
-      vigSubEl.textContent = analytics.ticketValue.subtitle;
+      if (analytics.exactSimulatedEvPct !== null && analytics.hasFlatLines) {
+        vigSubEl.textContent = `${analytics.ticketValue.subtitle} • Push-Adjusted EV: ${analytics.exactSimulatedEvPct > 0 ? '+' : ''}${analytics.exactSimulatedEvPct}%`;
+      } else {
+        vigSubEl.textContent = analytics.ticketValue.subtitle;
+      }
     }
 
     // 2. Pick Synergy (Plain-English)
