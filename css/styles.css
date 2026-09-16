@@ -1383,6 +1383,71 @@ body {
 }
 
 /* ==========================================
+ * ⚡ MULTI-TICKET BATCH SELECTOR TABS (v3.9.0)
+ * ========================================== */
+
+.slip-ticket-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.slip-ticket-tab {
+  flex: 1;
+  background: var(--bg-darker);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.slip-ticket-tab:hover {
+  border-color: var(--gold);
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.slip-ticket-tab.active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(0, 229, 255, 0.12));
+  border-color: var(--gold);
+  box-shadow: 0 0 12px var(--gold-glow);
+}
+
+.ticket-tab-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.slip-ticket-tab.active .ticket-tab-title {
+  color: #fff;
+}
+
+.ticket-tab-odds {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gold-bright);
+}
+
+.slip-ticket-tab.active .ticket-tab-odds {
+  color: var(--cyan);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+}
+
+/* ==========================================
  * ⚡ AUTO-GENERATE TICKET BUILDER & ACCORDION
  * ========================================== */
 
@@ -1443,6 +1508,10 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   width: 100%;
+}
+
+.quick-build-pills.tickets-count {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .quick-pill {

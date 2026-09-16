@@ -30,9 +30,12 @@ class OddsSuiteApp {
       parlayFilter: 'all', // 'all' | 'spread' | 'total' | 'moneyline'
       parlaySimResults: null,
       isParlaySimulating: false,
-      // Auto-Ticket Generator State
+      // Auto-Ticket Generator State (v3.9.0 Multi-Ticket Batching)
       autoBuildLegs: 3,
       autoBuildStrategy: 'best_value', // 'high_win' | 'best_value'
+      autoBuildTicketCount: 1, // 1 | 2 | 3
+      generatedTickets: [], // [{ id, legs, combinedOdds, formattedOdds, simResults, analytics, classification }]
+      activeTicketIndex: 0,
       autoBuildAccordionOpen: false,
       isAutoBuilding: false
     };
@@ -62,7 +65,7 @@ class OddsSuiteApp {
   initWorker() {
     try {
       // Use module worker with cache versioning for fast async simulation
-      this.worker = new Worker('js/simulationWorker.js?v=3.8.0', { type: 'module' });
+      this.worker = new Worker('js/simulationWorker.js?v=3.9.0', { type: 'module' });
       this.worker.onmessage = (e) => {
         const { type, percent, results, error, generatedLegs, simResults } = e.data || {};
         
@@ -93,23 +96,39 @@ class OddsSuiteApp {
           this.runSyncParlayFallback();
         }
 
-        // 3. Asynchronous Auto-Ticket Generator Events (Non-blocking)
+        // 3. Asynchronous Auto-Ticket Generator Events (Non-blocking v3.9.0)
         else if (type === 'auto_ticket_complete') {
           this.state.isAutoBuilding = false;
+          const tickets = Array.isArray(e.data.tickets) && e.data.tickets.length > 0
+            ? e.data.tickets
+            : [{ id: 1, legs: generatedLegs || [], simResults: simResults || null }];
+
+          this.state.generatedTickets = tickets;
+          this.state.activeTicketIndex = 0;
+
+          const activeTicket = tickets[0];
           this.parlayEngine.clearSlip();
-          (generatedLegs || []).forEach(leg => this.parlayEngine.addLeg(leg));
-          this.state.parlaySimResults = simResults;
+          (activeTicket.legs || []).forEach(leg => this.parlayEngine.addLeg(leg));
+          this.state.parlaySimResults = activeTicket.simResults;
           this.state.autoBuildAccordionOpen = false;
 
           const stratName = this.state.autoBuildStrategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
-          this.showToast(`⚡ Auto-Generated ${(generatedLegs || []).length}-Leg Ticket (${stratName})! 🎯`);
+          if (tickets.length > 1) {
+            this.showToast(`⚡ Auto-Generated ${tickets.length} Distinct Tickets (${stratName})! 🎯`);
+          } else {
+            this.showToast(`⚡ Auto-Generated ${(activeTicket.legs || []).length}-Leg Ticket (${stratName})! 🎯`);
+          }
 
           this.renderParlaySlate();
           this.renderBetSlip();
         } else if (type === 'auto_ticket_error') {
           console.error('Worker auto-ticket error:', error);
           this.state.isAutoBuilding = false;
-          this.runSyncAutoGenerateFallback(this.state.autoBuildLegs || 3, this.state.autoBuildStrategy || 'best_value');
+          this.runSyncAutoGenerateFallback(
+            this.state.autoBuildLegs || 3,
+            this.state.autoBuildStrategy || 'best_value',
+            this.state.autoBuildTicketCount || 1
+          );
         }
       };
 
@@ -119,7 +138,11 @@ class OddsSuiteApp {
         if (this.state.isParlaySimulating) this.runSyncParlayFallback();
         if (this.state.isAutoBuilding) {
           this.state.isAutoBuilding = false;
-          this.runSyncAutoGenerateFallback(this.state.autoBuildLegs || 3, this.state.autoBuildStrategy || 'best_value');
+          this.runSyncAutoGenerateFallback(
+            this.state.autoBuildLegs || 3,
+            this.state.autoBuildStrategy || 'best_value',
+            this.state.autoBuildTicketCount || 1
+          );
         }
       };
     } catch (e) {
@@ -159,6 +182,8 @@ class OddsSuiteApp {
     // Auto-Generate Ticket Handlers
     window.onAutoBuildLegCountSelect = (count) => this.onAutoBuildLegCountSelect(count);
     window.onAutoBuildStrategySelect = (strat) => this.onAutoBuildStrategySelect(strat);
+    window.onAutoBuildTicketCountSelect = (count) => this.onAutoBuildTicketCountSelect(count);
+    window.onSelectTicketTab = (idx) => this.onSelectTicketTab(idx);
     window.toggleAutoBuildAccordion = () => this.toggleAutoBuildAccordion();
     window.autoGenerateTicket = () => this.autoGenerateTicket();
   }
@@ -1003,6 +1028,13 @@ class OddsSuiteApp {
       this.showToast(`🔄 Replaced ${result.replacedLeg?.label || 'previous leg'} with ${leg.label}!`);
     }
 
+    if (this.state.generatedTickets.length > 0 && this.state.generatedTickets[this.state.activeTicketIndex]) {
+      this.state.generatedTickets[this.state.activeTicketIndex].legs = [...this.parlayEngine.legs];
+      const uncorr = this.parlayEngine.calculateUncorrelatedBookOdds();
+      this.state.generatedTickets[this.state.activeTicketIndex].combinedOdds = uncorr.combinedAmerican;
+      this.state.generatedTickets[this.state.activeTicketIndex].formattedOdds = this.parlayEngine.formatAmerican(uncorr.combinedAmerican);
+    }
+
     this.renderParlaySlate();
     this.renderBetSlip();
     this.resimulateBetSlip();
@@ -1013,6 +1045,14 @@ class OddsSuiteApp {
     if (removed) {
       this.showToast(`🗑️ Removed ${removed.label} from Bet Slip.`);
     }
+
+    if (this.state.generatedTickets.length > 0 && this.state.generatedTickets[this.state.activeTicketIndex]) {
+      this.state.generatedTickets[this.state.activeTicketIndex].legs = [...this.parlayEngine.legs];
+      const uncorr = this.parlayEngine.calculateUncorrelatedBookOdds();
+      this.state.generatedTickets[this.state.activeTicketIndex].combinedOdds = uncorr.combinedAmerican;
+      this.state.generatedTickets[this.state.activeTicketIndex].formattedOdds = this.parlayEngine.formatAmerican(uncorr.combinedAmerican);
+    }
+
     this.renderParlaySlate();
     this.renderBetSlip();
     this.resimulateBetSlip();
@@ -1021,6 +1061,8 @@ class OddsSuiteApp {
   clearBetSlip() {
     this.parlayEngine.clearSlip();
     this.state.parlaySimResults = null;
+    this.state.generatedTickets = [];
+    this.state.activeTicketIndex = 0;
     this.renderParlaySlate();
     this.renderBetSlip();
     this.showToast('🗑️ Cleared all legs from Bet Slip.');
@@ -1345,6 +1387,27 @@ class OddsSuiteApp {
     this.renderBetSlip();
   }
 
+  onAutoBuildTicketCountSelect(count) {
+    this.state.autoBuildTicketCount = Math.max(1, Math.min(3, parseInt(count, 10) || 1));
+    this.renderBetSlip();
+  }
+
+  onSelectTicketTab(index) {
+    const tickets = this.state.generatedTickets || [];
+    const idx = parseInt(index, 10);
+    if (!tickets[idx]) return;
+
+    this.state.activeTicketIndex = idx;
+    const ticket = tickets[idx];
+
+    this.parlayEngine.clearSlip();
+    (ticket.legs || []).forEach(leg => this.parlayEngine.addLeg(leg));
+    this.state.parlaySimResults = ticket.simResults || null;
+
+    this.renderParlaySlate();
+    this.renderBetSlip();
+  }
+
   toggleAutoBuildAccordion() {
     this.state.autoBuildAccordionOpen = !this.state.autoBuildAccordionOpen;
     this.renderBetSlip();
@@ -1353,6 +1416,7 @@ class OddsSuiteApp {
   autoGenerateTicket() {
     const legsCount = this.state.autoBuildLegs || 3;
     const strategy = this.state.autoBuildStrategy || 'best_value';
+    const ticketCount = this.state.autoBuildTicketCount || 1;
 
     // 1. Instant loading UI feedback (no main thread lockup)
     this.state.isAutoBuilding = true;
@@ -1365,7 +1429,7 @@ class OddsSuiteApp {
           action: 'GENERATE_AUTO_TICKET',
           slateData: this.state.slateData,
           week: this.state.activeWeek,
-          options: { legsCount, strategy }
+          options: { legsCount, strategy, ticketCount }
         });
         return;
       } catch (e) {
@@ -1375,39 +1439,47 @@ class OddsSuiteApp {
 
     // 3. Fallback: yield to UI thread so button renders loading state before simulation runs
     setTimeout(() => {
-      this.runSyncAutoGenerateFallback(legsCount, strategy);
+      this.runSyncAutoGenerateFallback(legsCount, strategy, ticketCount);
     }, 25);
   }
 
-  runSyncAutoGenerateFallback(legsCount, strategy) {
+  runSyncAutoGenerateFallback(legsCount, strategy, ticketCount = 1) {
     try {
-      const generatedLegs = this.parlayEngine.generateAutoTicket(
+      const tickets = this.parlayEngine.generateAutoTickets(
         this.state.slateData,
         this.state.activeWeek,
-        { legsCount, strategy }
+        { legsCount, strategy, ticketCount }
       );
 
-      if (!generatedLegs || generatedLegs.length === 0) {
+      if (!tickets || tickets.length === 0) {
         this.showToast(`⚠️ Could not auto-generate ticket for Week ${this.state.activeWeek}.`);
         this.state.isAutoBuilding = false;
         this.renderBetSlip();
         return;
       }
 
+      this.state.generatedTickets = tickets;
+      this.state.activeTicketIndex = 0;
+
+      const activeTicket = tickets[0];
       this.parlayEngine.clearSlip();
-      generatedLegs.forEach(leg => {
+      (activeTicket.legs || []).forEach(leg => {
         this.parlayEngine.addLeg(leg);
       });
+      this.state.parlaySimResults = activeTicket.simResults || null;
 
       this.state.autoBuildAccordionOpen = false;
       this.state.isAutoBuilding = false;
 
       const stratName = strategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
-      this.showToast(`⚡ Auto-Generated ${generatedLegs.length}-Leg Ticket (${stratName})! 🎯`);
+      if (tickets.length > 1) {
+        this.showToast(`⚡ Auto-Generated ${tickets.length} Distinct Tickets (${stratName})! 🎯`);
+      } else {
+        this.showToast(`⚡ Auto-Generated ${activeTicket.legs.length}-Leg Ticket (${stratName})! 🎯`);
+      }
 
       this.renderParlaySlate();
       this.renderBetSlip();
-      this.resimulateBetSlip();
     } catch (err) {
       console.error('Sync auto-generate fallback error:', err);
       this.state.isAutoBuilding = false;
@@ -1429,6 +1501,7 @@ class OddsSuiteApp {
 
     const legsCount = this.state.autoBuildLegs || 3;
     const strategy = this.state.autoBuildStrategy || 'best_value';
+    const ticketCount = this.state.autoBuildTicketCount || 1;
     const isAccordionOpen = this.state.autoBuildAccordionOpen || false;
 
     // Update Counts
@@ -1436,6 +1509,28 @@ class OddsSuiteApp {
     if (legCountBadge) legCountBadge.textContent = countText;
     if (mobileCountBadge) mobileCountBadge.textContent = String(legs.length);
     if (mobileSlipToggle) mobileSlipToggle.style.display = legs.length > 0 ? 'inline-flex' : 'none';
+
+    // Batch Multi-Ticket Tabs (v3.9.0)
+    const tabsContainer = document.getElementById('slipTicketTabs');
+    if (tabsContainer) {
+      const tickets = this.state.generatedTickets || [];
+      if (tickets.length >= 2 && legs.length > 0) {
+        tabsContainer.style.display = 'flex';
+        tabsContainer.innerHTML = tickets.map((t, idx) => {
+          const isActive = idx === this.state.activeTicketIndex;
+          const oddsDisplay = t.formattedOdds || (t.combinedOdds > 0 ? `+${t.combinedOdds}` : `${t.combinedOdds}`);
+          return `
+            <button class="slip-ticket-tab ${isActive ? 'active' : ''}" onclick="onSelectTicketTab(${idx})" title="Switch to Ticket ${idx + 1}">
+              <span class="ticket-tab-title">Ticket ${idx + 1}</span>
+              <span class="ticket-tab-odds">${oddsDisplay}</span>
+            </button>
+          `;
+        }).join('');
+      } else {
+        tabsContainer.style.display = 'none';
+        tabsContainer.innerHTML = '';
+      }
+    }
 
     // Update Ticket Type Classification Banner
     const classification = this.parlayEngine.getTicketClassification();
@@ -1481,8 +1576,16 @@ class OddsSuiteApp {
                     </button>
                   </div>
                 </div>
+                <div class="quick-build-section">
+                  <div class="quick-build-label">Tickets to Build</div>
+                  <div class="quick-build-pills tickets-count">
+                    <button class="quick-pill ${ticketCount === 1 ? 'active' : ''}" onclick="onAutoBuildTicketCountSelect(1)">1</button>
+                    <button class="quick-pill ${ticketCount === 2 ? 'active' : ''}" onclick="onAutoBuildTicketCountSelect(2)">2</button>
+                    <button class="quick-pill ${ticketCount === 3 ? 'active' : ''}" onclick="onAutoBuildTicketCountSelect(3)">3</button>
+                  </div>
+                </div>
                 <button class="btn-auto-build ${this.state.isAutoBuilding ? 'loading' : ''}" onclick="autoGenerateTicket()" ${this.state.isAutoBuilding ? 'disabled' : ''} style="margin-top:8px;">
-                  <span>${this.state.isAutoBuilding ? '⚡ Calculating 10k Monte Carlo...' : '⚡ Auto-Generate New Ticket'}</span>
+                  <span>${this.state.isAutoBuilding ? '⚡ Calculating 10k Monte Carlo...' : (ticketCount > 1 ? `⚡ Auto-Generate ${ticketCount} Tickets` : '⚡ Auto-Generate New Ticket')}</span>
                 </button>
               </div>
             ` : ''}
@@ -1527,8 +1630,17 @@ class OddsSuiteApp {
               </div>
             </div>
 
+            <div class="quick-build-section">
+              <div class="quick-build-label">Tickets to Build</div>
+              <div class="quick-build-pills tickets-count">
+                <button class="quick-pill ${ticketCount === 1 ? 'active' : ''}" onclick="onAutoBuildTicketCountSelect(1)">1</button>
+                <button class="quick-pill ${ticketCount === 2 ? 'active' : ''}" onclick="onAutoBuildTicketCountSelect(2)">2</button>
+                <button class="quick-pill ${ticketCount === 3 ? 'active' : ''}" onclick="onAutoBuildTicketCountSelect(3)">3</button>
+              </div>
+            </div>
+
             <button class="btn-auto-build ${this.state.isAutoBuilding ? 'loading' : ''}" onclick="autoGenerateTicket()" ${this.state.isAutoBuilding ? 'disabled' : ''}>
-              <span>${this.state.isAutoBuilding ? '⚡ Calculating 10k Monte Carlo...' : '⚡ Auto-Generate Ticket'}</span>
+              <span>${this.state.isAutoBuilding ? '⚡ Calculating 10k Monte Carlo...' : (ticketCount > 1 ? `⚡ Auto-Generate ${ticketCount} Tickets` : '⚡ Auto-Generate Ticket')}</span>
             </button>
 
             <div class="quick-build-hint">

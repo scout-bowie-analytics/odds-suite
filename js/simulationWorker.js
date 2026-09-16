@@ -17,13 +17,12 @@ self.onmessage = function(e) {
     const { slateData = [], week = 1, options = {} } = data;
     try {
       const parlayEngine = new ParlayEngine();
-      const generatedLegs = parlayEngine.generateAutoTicket(slateData, week, options);
-      parlayEngine.legs = generatedLegs;
-      const simResults = parlayEngine.runSyncSimulation(slateData, 10000);
+      const tickets = parlayEngine.generateAutoTickets(slateData, week, options);
       self.postMessage({
         type: 'auto_ticket_complete',
-        generatedLegs,
-        simResults
+        tickets,
+        generatedLegs: tickets[0]?.legs || [],
+        simResults: tickets[0]?.simResults || null
       });
     } catch (err) {
       self.postMessage({ type: 'auto_ticket_error', error: err.message });
