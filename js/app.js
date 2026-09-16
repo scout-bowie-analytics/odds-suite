@@ -1654,16 +1654,12 @@ class OddsSuiteApp {
           if (leg.marketCategory === 'total') marketTag = 'TOTAL';
           if (leg.marketCategory === 'moneyline') marketTag = 'MONEYLINE';
 
-          const isFlat = leg.isFlatLine || OddsUtils.isFlatLine(leg.lineValue);
-          const pushTag = isFlat ? `<span class="slip-leg-push-tag" title="Flat line: Push reverts to reduced parlay on exact margin">PUSH-ELIGIBLE</span>` : '';
-
           return `
             <div class="slip-leg-item">
               <div class="slip-leg-info">
                 <div class="slip-leg-title">
                   <span>${leg.label}</span>
                   <span class="slip-leg-market-tag">${marketTag}</span>
-                  ${pushTag}
                 </div>
                 <div class="slip-leg-matchup">${leg.matchup} • Week ${leg.week}</div>
               </div>

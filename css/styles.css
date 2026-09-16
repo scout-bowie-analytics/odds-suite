@@ -2070,9 +2070,15 @@ body {
   z-index: 999;
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1023px) {
   .mobile-slip-btn {
     display: inline-flex;
+  }
+}
+
+@media (min-width: 1024px) {
+  .mobile-slip-toggle, .mobile-slip-btn, #mobileSlipBtn, #mobileSlipToggle, [data-mobile-slip-trigger] {
+    display: none !important;
   }
 }
 
