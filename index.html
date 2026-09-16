@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFL Survivor & Pick'em Optimizer | Scout Bowie Analytics Suite</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/styles.css?v=3.5.0">
+
+  <!-- OpenGraph / Social Metadata -->
+  <meta property="og:title" content="NFL Survivor & Pick'em Optimizer | Scout Bowie Analytics Suite">
+  <meta property="og:description" content="100% client-side NFL survivor pathfinder, 10,000-run Monte Carlo pool simulator, and confidence ranker powered by Scout Bowie.">
+  <meta property="og:image" content="assets/scout-bowie.webp">
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+
+  <!-- Suite Navigation Bar -->
+  <div class="suite-nav">
+    <a href="index.html" class="suite-nav-brand">
+      <span>⚡ SCOUT BOWIE</span>
+      <span style="color:var(--muted);font-weight:400;">•</span>
+      <span style="color:#fff;font-weight:700;">Odds Suite</span>
+    </a>
+    <div class="suite-nav-links">
+      <a href="https://scout-bowie-analytics.github.io/sleeper-analytics-suite/" class="suite-nav-link" target="_blank">◄ Sleeper Suite Hub</a>
+      <a href="https://scout-bowie-analytics.github.io/sleeper-analytics-suite/draft/index.html" class="suite-nav-link" style="color:var(--cyan);border-color:rgba(0,229,255,0.4);" target="_blank">Draft War Room ➔</a>
+      <a href="https://scout-bowie-analytics.github.io/sleeper-analytics-suite/weekly/index.html" class="suite-nav-link" style="color:var(--accent);border-color:rgba(16,185,129,0.4);" target="_blank">Weekly Optimizer ➔</a>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- Scout Bowie Mascot Header Card -->
+    <div class="bowie-header-card">
+      <div class="bowie-avatar-wrap" onclick="triggerBowieEasterEgg(this.querySelector('img'))" title="Click Bowie for tactical barking tips!">
+        <img src="assets/scout-bowie.webp" class="bowie-avatar-img" alt="Scout Bowie" onerror="this.onerror=null; this.src='Bowie.jpg';">
+        <span class="bowie-badge-tag">CHIEF QUANT</span>
+      </div>
+      <div class="bowie-header-content">
+        <div class="bowie-title-row">
+          <div class="bowie-title">
+            <span>NFL Survivor & Odds Suite</span>
+            <span class="spotlight-tag tag-leverage" style="font-size:9.5px;margin:0;">100% CLIENT-SIDE</span>
+          </div>
+        </div>
+        <div id="bowieSpeech" class="bowie-speech">
+          "Welcome to the Survivor War Room! Calibrating dynamic lookahead paths to maximize your pool win equity." 🐾
+        </div>
+      </div>
+    </div>
+
+    <!-- Global Navigation Bar: Mode Tabs + Global Week Selector -->
+    <div class="global-nav-bar">
+      
+      <!-- Mode Navigation Tabs -->
+      <div class="view-tabs">
+        <button class="view-tab active" data-view="survivor" onclick="switchView('survivor')">
+          <span>🏈 Survivor Optimizer</span>
+        </button>
+        <button class="view-tab" data-view="pickem" onclick="switchView('pickem')">
+          <span>🎯 Pick'em Confidence Mode</span>
+        </button>
+        <button class="view-tab" data-view="parlay" onclick="switchView('parlay')">
+          <span>⚡ Parlay & SGP Engine</span>
+        </button>
+      </div>
+
+      <!-- Global Week Selector (The ONLY Global Dropdown) -->
+      <div class="global-week-card">
+        <span class="global-week-label">ACTIVE WEEK:</span>
+        <select id="weekSelect" class="global-week-select" onchange="onWeekSelect(this.value)">
+          <option value="1" selected>Week 1</option>
+          <option value="2">Week 2</option>
+          <option value="3">Week 3</option>
+          <option value="4">Week 4</option>
+          <option value="5">Week 5</option>
+          <option value="6">Week 6</option>
+          <option value="7">Week 7</option>
+          <option value="8">Week 8</option>
+          <option value="9">Week 9</option>
+          <option value="10">Week 10</option>
+          <option value="11">Week 11</option>
+          <option value="12">Week 12</option>
+          <option value="13">Week 13</option>
+          <option value="14">Week 14</option>
+          <option value="15">Week 15</option>
+          <option value="16">Week 16</option>
+          <option value="17">Week 17</option>
+          <option value="18">Week 18</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- VIEW 1: SURVIVOR OPTIMIZER -->
+    <div id="survivorView">
+
+      <!-- Survivor Configuration Bar: Pool Size & Optimization Goal -->
+      <div class="matrix-card" style="margin-bottom:20px;padding:16px 20px;">
+        <div class="survivor-controls-grid">
+          
+          <!-- Pool Size Slider -->
+          <div class="control-group">
+            <div class="control-label">
+              <span>Pool Size (Entrants)</span>
+              <span id="poolScaleTag" style="color:var(--gold);font-weight:800;font-size:10px;">Mid-Size Pool (Balanced EV)</span>
+            </div>
+            <div class="pool-slider-wrap">
+              <input type="range" id="poolSizeSlider" class="pool-slider" min="10" max="3000" step="10" value="100" oninput="onPoolSizeInput(this.value)">
+              <span id="poolSizeVal" class="pool-size-badge">100</span>
+            </div>
+          </div>
+
+          <!-- Optimization Goal -->
+          <div class="control-group">
+            <div class="control-label">Optimization Goal</div>
+            <div class="strategy-btn-group" id="survivorStrategySelector">
+              <button class="strategy-btn" data-strategy="survival" onclick="onStrategySelect('survival')">Max Survival</button>
+              <button class="strategy-btn active" data-strategy="contrarian" onclick="onStrategySelect('contrarian')">Contrarian Leverage</button>
+            </div>
+          </div>
+
+          <!-- Actions: Run Sim & Reset -->
+          <div class="control-group" style="justify-content:flex-end;">
+            <div class="control-label" style="opacity:0;">Actions</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button id="runSimBtn" class="btn-primary" onclick="runMonteCarloSim()" style="padding:7px 14px;font-size:12px;white-space:nowrap;">
+                <span>⚡ Re-Run 10k</span>
+              </button>
+              <button class="btn-secondary" onclick="resetOverrides()" title="Clear manual locks & exclusions" style="padding:7px 12px;font-size:12px;white-space:nowrap;">
+                <span>🔄 Reset</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Active Week 3-Card Spotlight -->
+      <div id="spotlightGrid" class="spotlight-grid">
+        <!-- Injected dynamically by app.js -->
+      </div>
+
+      <!-- Monte Carlo Simulation Results Card (Plain English) -->
+      <div class="matrix-card" style="margin-bottom:24px;">
+        <div class="matrix-header-row">
+          <div class="matrix-title">
+            <span>🎲 10,000-Game Monte Carlo Pool Simulation</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="btn-secondary" onclick="copySurvivorPath()" title="Copy entire optimal strategy to clipboard">
+              <span>📋 Copy Path</span>
+            </button>
+          </div>
+        </div>
+        <div class="sim-stats-grid">
+          <!-- Box 1: Your Win Chance (Equity) -->
+          <div class="sim-stat-card">
+            <div id="simWinEquity" class="sim-stat-value" style="color:var(--cyan);">—</div>
+            <div class="sim-stat-label">Your Win Chance (Equity)</div>
+            <div id="simEdgeSub" class="sim-stat-sub">Simulated odds to finish 1st place & take the pot</div>
+          </div>
+          <!-- Box 2: Expected Pool Finish -->
+          <div class="sim-stat-card">
+            <div id="simExpectedFinish" class="sim-stat-value" style="color:var(--gold-bright);">—</div>
+            <div class="sim-stat-label">When Pool is Expected to End</div>
+            <div id="simFinishSub" class="sim-stat-sub">Week when all opponents are projected to be eliminated</div>
+          </div>
+          <!-- Box 3: Odds of Surviving to the End -->
+          <div class="sim-stat-card">
+            <div id="simHorizonOdds" class="sim-stat-value" style="color:var(--accent);">—</div>
+            <div class="sim-stat-label">Odds of Surviving to the End</div>
+            <div id="simOddsSub" class="sim-stat-sub">Chance of surviving every week without a single loss</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 18-Week Path Grid Matrix -->
+      <div class="matrix-card">
+        <div class="matrix-header-row">
+          <div>
+            <div class="matrix-title">
+              <span>🗺️ 18-Week Strategic Path & Heatmap Matrix</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">
+              Highlighted cells represent your optimal path. The vertical <b>🏁 Gold Border</b> marks the expected pool finish line. Click any cell to <b>Lock 🔒</b>.
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;font-size:11px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:rgba(16,185,129,0.35);border:1px solid var(--accent);border-radius:2px;"></span> Elite (75%+)</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:rgba(34,197,94,0.22);border-radius:2px;"></span> Favorite (65%+)</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:rgba(245,158,11,0.35);border:1px solid var(--gold);border-radius:2px;"></span> Optimal Path (⭐)</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:rgba(16,185,129,0.5);border:1.5px solid var(--accent);border-radius:2px;"></span> Your Lock (🔒)</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="color:var(--gold);font-weight:800;">🏁 Finish Line</span></span>
+          </div>
+        </div>
+
+        <!-- Dynamic Strategy & Lock Status Bar -->
+        <div id="arsenalBar" class="arsenal-bar"></div>
+
+        <div class="matrix-table-wrap">
+          <table class="matrix-table">
+            <thead>
+              <tr id="matrixHeaderRow">
+                <!-- Dynamically populated W1 - W18 with Finish Line badge -->
+              </tr>
+            </thead>
+            <tbody id="matrixBody">
+              <!-- Dynamically populated 32 NFL teams -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Full Weekly Slate Table -->
+      <div class="matrix-card">
+        <div class="matrix-header-row">
+          <div class="matrix-title">
+            <span>📋 Active Week Slate Rankings & EV Metrics</span>
+          </div>
+          <span style="font-size:11.5px;color:var(--muted);">All candidate teams ranked by pool expected value (EV)</span>
+        </div>
+
+        <div class="confidence-table-wrap">
+          <table class="confidence-table">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>Opponent</th>
+                <th>Spread</th>
+                <th>Win Probability</th>
+                <th>Public Pick %</th>
+                <th>Expected Value (EV)</th>
+                <th>Future Value</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="weeklySlateBody">
+              <!-- Injected by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW 2: PICK'EM CONFIDENCE MODE -->
+    <div id="pickemView" style="display:none;">
+      
+      <!-- Pickem Top Control Bar: Mode Toggle & Subtitle -->
+      <div class="matrix-card" style="margin-bottom:16px;padding:16px 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+          <div>
+            <div class="matrix-title" style="display:flex;align-items:center;gap:8px;">
+              <span>🎯 Pick'em Pool Optimizer</span>
+              <span id="pickemModeBadge" class="spotlight-tag tag-leverage" style="font-size:10px;margin:0;">STRAIGHT UP (SU)</span>
+            </div>
+            <div id="pickemSubtitle" style="font-size:12px;color:var(--muted);margin-top:4px;">
+              Optimal 16-to-1 confidence point allocation maximizing pool EV based on Vegas moneyline win probability and national pick leverage.
+            </div>
+          </div>
+
+          <!-- SU vs ATS Mode Switcher & Copy Action -->
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div class="strategy-btn-group" id="pickemModeSelector">
+              <button class="strategy-btn active" id="btnPickemSU" onclick="onPickemModeSelect('straight_up')" data-mode="straight_up">
+                <span>🏈 Straight Up (SU)</span>
+              </button>
+              <button class="strategy-btn" id="btnPickemATS" onclick="onPickemModeSelect('ats')" data-mode="ats">
+                <span>⚖️ Against the Spread (ATS)</span>
+              </button>
+            </div>
+            <button class="btn-secondary" onclick="copyPickemSheet()" title="Copy confidence picks to clipboard">
+              <span>📋 Copy Sheet</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pick'em Confidence Rankings Table -->
+      <div class="matrix-card">
+        <div class="matrix-header-row">
+          <div>
+            <div class="matrix-title" id="pickemTableTitle">
+              <span>📋 Week 1 Pick'em Confidence Table (16 down to 1)</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px;" id="pickemTableSubtitle">
+              Higher point values assigned to safest favorites. Leverage plays highlight where the public is underweight.
+            </div>
+          </div>
+          <div id="pickemKeyLegend" style="display:flex;align-items:center;gap:12px;font-size:11px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="color:var(--cyan);font-weight:800;">⚡ Leverage</span> Public Underweight</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;"><span style="color:var(--gold-bright);font-weight:800;">⭐ High Confidence</span> Top Tier</span>
+          </div>
+        </div>
+
+        <div class="confidence-table-wrap">
+          <table class="confidence-table">
+            <thead id="pickemThead">
+              <!-- Dynamically populated by app.js based on SU vs ATS mode -->
+            </thead>
+            <tbody id="pickemTableBody">
+              <!-- Injected by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: PARLAY & SAME-GAME PARLAY (SGP) ENGINE -->
+    <div id="parlayView" style="display:none;">
+      <div class="parlay-layout">
+        
+        <!-- Left: Matchup Slate Area -->
+        <div class="parlay-slate-container">
+          
+          <!-- Parlay Slate Header Bar -->
+          <div class="matrix-card" style="margin-bottom:16px;padding:16px 20px;">
+            <div class="parlay-header-row">
+              <div class="parlay-header-info">
+                <div class="matrix-title" style="display:flex;align-items:center;gap:8px;">
+                  <span>⚡ Parlay & SGP Matchup Slate</span>
+                  <span id="parlaySlateWeekBadge" class="spotlight-tag tag-chalk" style="font-size:10px;margin:0;">WEEK 1</span>
+                </div>
+                <div class="parlay-header-sub">
+                  Select betting pills below to craft <b>Same-Game Parlays (SGPs)</b> or <b>Multi-Game Tickets</b>. The engine automatically captures correlated game scripts and computes un-vigged +EV edges via 10,000 Monte Carlo runs.
+                </div>
+              </div>
+
+              <!-- Market Filters -->
+              <div class="parlay-filter-group">
+                <button class="filter-chip active" data-filter="all" onclick="onParlayFilterSelect('all')">All Markets</button>
+                <button class="filter-chip" data-filter="spread" onclick="onParlayFilterSelect('spread')">Spreads</button>
+                <button class="filter-chip" data-filter="total" onclick="onParlayFilterSelect('total')">Totals (O/U)</button>
+                <button class="filter-chip" data-filter="moneyline" onclick="onParlayFilterSelect('moneyline')">Moneyline</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Matchup Grid -->
+          <div id="parlayMatchupGrid" class="parlay-matchup-grid">
+            <!-- Dynamically populated by app.js -->
+          </div>
+
+        </div>
+
+        <!-- Right: Bet Slip Drawer / Persistent Dock -->
+        <div id="betSlipDrawer" class="bet-slip-panel">
+          
+          <!-- Slip Header -->
+          <div class="bet-slip-header">
+            <div class="bet-slip-title-wrap">
+              <span style="font-size:18px;">⚡</span>
+              <div>
+                <div class="bet-slip-title">Bet Slip</div>
+                <div id="slipLegCountBadge" class="bet-slip-count">0 Legs Selected</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button class="btn-clear-slip" onclick="clearBetSlip()" title="Clear all selections">
+                <span>🗑️ Clear</span>
+              </button>
+              <button class="btn-close-slip-mobile" onclick="toggleMobileBetSlip(false)" title="Close Slip">✕</button>
+            </div>
+          </div>
+
+          <!-- Dynamic Ticket Classification Banner -->
+          <div id="slipTicketTypeBanner" class="ticket-type-banner">
+            <div class="ticket-badge badge-empty">Empty Bet Slip</div>
+            <div class="ticket-badge-desc">Click any betting pill to build your ticket.</div>
+          </div>
+
+          <!-- Quick Auto-Build Accordion (When populated with >= 1 leg) -->
+          <div id="slipAutoBuildAccordion" class="slip-accordion-container" style="display:none;"></div>
+
+          <!-- Selected Legs Itemized List -->
+          <div id="slipLegsList" class="slip-legs-list">
+            <!-- Injected by app.js -->
+          </div>
+
+          <!-- Stake & Sportsbook Odds Configuration -->
+          <div id="slipOddsCard" class="slip-odds-card" style="display:none;">
+            <div class="slip-controls-row">
+              
+              <!-- Stake Input -->
+              <div class="slip-input-group">
+                <label class="slip-input-label">Stake Amount ($)</label>
+                <div class="slip-stake-wrap">
+                  <span class="slip-currency-prefix">$</span>
+                  <input type="number" id="slipStakeInput" class="slip-num-input" min="1" max="10000" step="5" value="10" oninput="onSlipStakeChange(this.value)">
+                </div>
+                <div class="slip-stake-presets">
+                  <button class="stake-preset-btn" onclick="setSlipStake(10)">$10</button>
+                  <button class="stake-preset-btn" onclick="setSlipStake(25)">$25</button>
+                  <button class="stake-preset-btn" onclick="setSlipStake(50)">$50</button>
+                  <button class="stake-preset-btn" onclick="setSlipStake(100)">$100</button>
+                </div>
+              </div>
+
+              <!-- Sportsbook Offered Odds Input (Editable for actual SGP books) -->
+              <div class="slip-input-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <label class="slip-input-label">Book Offered Odds</label>
+                  <button id="slipResetOddsBtn" class="slip-reset-odds-btn" onclick="resetSlipOfferedOdds()" style="display:none;" title="Reset to standard book multiplier">↺ Reset</button>
+                </div>
+                <div class="slip-odds-input-wrap">
+                  <input type="text" id="slipOfferedOddsInput" class="slip-num-input" placeholder="+260" onchange="onSlipOfferedOddsChange(this.value)">
+                </div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                  Auto-calculated standard payout. Edit to match DraftKings / FanDuel SGP quote.
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 10,000-Sim Analytics Card -->
+          <div id="slipAnalyticsCard" class="slip-analytics-card" style="display:none;">
+            
+            <div class="slip-analytics-header">
+              <span style="color:var(--gold-bright);font-weight:800;font-size:11px;letter-spacing:0.05em;">🎲 10,000-SIM BREAKDOWN</span>
+              <span id="slipSimStatusBadge" class="badge-sim-status">10k Monte Carlo</span>
+            </div>
+
+            <div class="analytics-metrics-grid">
+              
+              <!-- Sim True Win Chance -->
+              <div class="analytics-metric-box">
+                <div class="analytics-metric-label">True Win Chance</div>
+                <div id="slipSimWinProb" class="analytics-metric-val" style="color:var(--cyan);">—</div>
+                <div id="slipFairOddsSub" class="analytics-metric-sub">Fair True Odds: —</div>
+              </div>
+
+              <!-- Ticket Value Badge -->
+              <div class="analytics-metric-box">
+                <div class="analytics-metric-label">Ticket Value</div>
+                <div id="slipEvBadge" class="analytics-metric-val" style="color:var(--accent);">—</div>
+                <div id="slipVigSub" class="analytics-metric-sub">Sportsbook Cut: —</div>
+              </div>
+
+            </div>
+
+            <!-- Pick Synergy Section -->
+            <div id="slipCorrelationSection" class="correlation-insight-box">
+              <div class="correlation-header">
+                <span style="font-size:12px;" id="slipSynergyHeaderLabel">🧠 Pick Synergy:</span>
+                <span id="slipCorrelationBoostVal" style="color:var(--gold-bright);font-weight:800;font-size:12px;">+0.0%</span>
+              </div>
+              <div id="slipCorrelationExplanation" class="correlation-desc">
+                Neutral: Independent games
+              </div>
+            </div>
+
+            <!-- Potential Payout & Profit Summary -->
+            <div class="payout-summary-box">
+              <div class="payout-row">
+                <span style="color:var(--muted);">Total Return / Payout:</span>
+                <span id="slipTotalPayoutVal" class="payout-highlight" style="color:#fff;">$0.00</span>
+              </div>
+              <div class="payout-row" style="font-size:12px;margin-top:2px;">
+                <span style="color:var(--muted);">Estimated Net Profit:</span>
+                <span id="slipTotalProfitVal" style="color:var(--accent);font-weight:700;">+$0.00</span>
+              </div>
+            </div>
+
+            <!-- Actions Row -->
+            <div class="slip-actions-row">
+              <button class="btn-primary" style="flex:1;padding:9px 12px;font-size:12px;" onclick="resimulateBetSlip()">
+                <span>⚡ Resimulate 10k</span>
+              </button>
+              <button class="btn-secondary" style="flex:1;padding:9px 12px;font-size:12px;" onclick="copyParlayTicket()">
+                <span>📋 Copy Slip</span>
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Floating Mobile Bet Slip Toggle Button -->
+  <button id="mobileSlipToggle" class="mobile-slip-btn" onclick="toggleMobileBetSlip(true)" style="display:none;">
+    <span>⚡ Bet Slip</span>
+    <span id="mobileSlipCountBadge" class="mobile-slip-badge">0</span>
+  </button>
+
+  <!-- Toast Notification -->
+  <div id="toast"></div>
+
+  <!-- Main App Module -->
+  <script type="module" src="js/app.js?v=3.5.0"></script>
+</body>
+</html>
