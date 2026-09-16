@@ -604,6 +604,9 @@ export class ParlayEngine {
   /**
    * ⚡ AUTO-GENERATE TICKET BUILDER
    * Algorithmic ticket generator for High Win % and Best Value (+EV) / Correlated SGP strategies.
+   * 1. Pre-Filtered SGP Candidate Pool: Strictly requires positive synergy (synergy > 0).
+   * 2. Multi-Leg Vig Minimization: Avoids heavy moneyline juice traps (shorter than -250).
+   * 3. EV / Edge Maximization: Evaluates candidate combinations and selects the ticket with highest Expected Value.
    * @param {Array} slateData - 18-week slate data array
    * @param {number} week - Active week index (1-18)
    * @param {Object} options - { legsCount: 2-5, strategy: 'high_win' | 'best_value' }
@@ -732,6 +735,7 @@ export class ParlayEngine {
       ];
     };
 
+    // Strategy === 'high_win' (Favorites & strong moneylines across independent games)
     if (strategy === 'high_win') {
       const allCandidates = [];
       weekData.games.forEach(g => {
@@ -739,7 +743,6 @@ export class ParlayEngine {
         gameLegs.forEach(leg => allCandidates.push(leg));
       });
 
-      // Sort by highest win probability descending
       allCandidates.sort((a, b) => b.winProb - a.winProb);
 
       const selected = [];
@@ -756,93 +759,142 @@ export class ParlayEngine {
       return selected;
     }
 
-    // Strategy === 'best_value' (+EV / Correlated SGP Engine)
-    let bestGameScore = -999;
-    let bestGamePair = [];
+    // Strategy === 'best_value' (+EV / Pre-Filtered SGP / Low-Vig Minimization / Edge Maximization)
+    const prevSlip = [...this.legs];
 
+    // 1. Pre-Filtered SGP Candidate Pool (Spread/ML + Total, strictly synergy > 0, no ML < -250 juice traps)
+    const validSgpPairs = [];
     weekData.games.forEach(g => {
       const gameLegs = buildLegsForGame(g);
-      const isHomeFav = (g.homeWinProb || 0.5) >= 0.5;
-      const dogTeam = isHomeFav ? g.awayTeam : g.homeTeam;
-      const favTeam = isHomeFav ? g.homeTeam : g.awayTeam;
+      const sideLegs = gameLegs.filter(l => l.marketCategory === 'spread' || l.marketCategory === 'moneyline');
+      const totalLegs = gameLegs.filter(l => l.marketCategory === 'total');
 
-      const dogSpreadLeg = gameLegs.find(l => l.marketCategory === 'spread' && l.selection === dogTeam);
-      const underLeg = gameLegs.find(l => l.marketCategory === 'total' && l.selection === 'UNDER');
-      const favMlLeg = gameLegs.find(l => l.marketCategory === 'moneyline' && l.selection === favTeam);
-      const overLeg = gameLegs.find(l => l.marketCategory === 'total' && l.selection === 'OVER');
+      sideLegs.forEach(side => {
+        // Disallow heavy ML juice traps (< -250) where bookmaker hold is concentrated
+        if (side.marketCategory === 'moneyline' && side.bookOdds < -250) return;
 
-      const spreadDiff = Math.abs(Number(g.spread || 0));
-      const totalLine = Number(g.total || 44.0);
+        totalLegs.forEach(tot => {
+          this.legs = [side, tot];
+          const sim = this.runSyncSimulation(slateData, 2000);
+          const analytics = this.calculateAnalytics(sim, slateData);
 
-      // Scenario A: Underdog Cover + Under (Strongest correlation in defensive/tight games)
-      if (dogSpreadLeg && underLeg && spreadDiff >= 3.0) {
-        const score = (spreadDiff * 1.5) + Math.max(0, (48 - totalLine));
-        if (score > bestGameScore) {
-          bestGameScore = score;
-          bestGamePair = [dogSpreadLeg, underLeg];
+          // Require strictly positive correlation (synergy > 0)
+          if (analytics.correlationBoostPct > 0) {
+            validSgpPairs.push({
+              pair: [side, tot],
+              gameId: g.id,
+              matchup: `${g.awayTeam} @ ${g.homeTeam}`,
+              boostPct: analytics.correlationBoostPct,
+              evPct: analytics.expectedValuePct,
+              winProbPct: analytics.simWinProbPct,
+              odds: analytics.effectiveAmericanOdds
+            });
+          }
+        });
+      });
+    });
+
+    // Sort SGP pairs by Expected Value descending
+    validSgpPairs.sort((a, b) => b.evPct - a.evPct);
+
+    // 2. Multi-Leg Vig Minimization: Pre-filtered independent legs from other games
+    const independentCandidates = [];
+    weekData.games.forEach(g => {
+      const gameLegs = buildLegsForGame(g);
+      gameLegs.forEach(leg => {
+        // Exclude heavy moneyline juice traps (odds shorter than -250, e.g. -575)
+        if (leg.marketCategory === 'moneyline' && leg.bookOdds < -250) return;
+        
+        // Standard spread/total lines (-110) or modest moneylines (-250 to +200)
+        if (leg.marketCategory === 'spread' || leg.marketCategory === 'total') {
+          independentCandidates.push(leg);
+        } else if (leg.marketCategory === 'moneyline' && leg.bookOdds >= -250 && leg.bookOdds <= 200) {
+          independentCandidates.push(leg);
         }
-      } 
-      // Scenario B: Heavy Favorite ML + Over (Offensive blowout synergy)
-      else if (favMlLeg && overLeg && spreadDiff >= 6.5) {
-        const score = spreadDiff * 1.3;
-        if (score > bestGameScore) {
-          bestGameScore = score;
-          bestGamePair = [favMlLeg, overLeg];
-        }
+      });
+    });
+
+    // 3. EV / Edge Maximization: Build candidate combinations of size legsCount
+    const candidateTickets = [];
+
+    if (legsCount === 2) {
+      if (validSgpPairs.length > 0) {
+        validSgpPairs.slice(0, 10).forEach(sp => candidateTickets.push(sp.pair));
+      }
+    } else {
+      const topPairs = validSgpPairs.slice(0, 6);
+      topPairs.forEach(sgp => {
+        const pairGameId = sgp.gameId;
+        const otherGameLegs = independentCandidates.filter(l => l.gameId !== pairGameId);
+        const needed = legsCount - 2;
+
+        const gamesMap = new Map();
+        otherGameLegs.forEach(l => {
+          if (!gamesMap.has(l.gameId)) gamesMap.set(l.gameId, []);
+          gamesMap.get(l.gameId).push(l);
+        });
+
+        const gameIds = Array.from(gamesMap.keys());
+        const getCombinations = (arr, k) => {
+          if (k === 1) return arr.map(x => [x]);
+          const result = [];
+          for (let i = 0; i <= arr.length - k; i++) {
+            const head = arr[i];
+            const tailCombos = getCombinations(arr.slice(i + 1), k - 1);
+            tailCombos.forEach(t => result.push([head, ...t]));
+          }
+          return result;
+        };
+
+        const gameCombos = getCombinations(gameIds, needed).slice(0, 4);
+        gameCombos.forEach(gCombo => {
+          const additionalLegs = gCombo.map(gid => {
+            const legsForG = gamesMap.get(gid);
+            return legsForG.find(l => l.marketCategory === 'spread') || legsForG[0];
+          });
+
+          candidateTickets.push([...sgp.pair, ...additionalLegs]);
+        });
+      });
+    }
+
+    // 4. Rank candidates by Highest Expected Value and non-negative correlation
+    const evaluatedTickets = [];
+    candidateTickets.forEach(tLegs => {
+      this.legs = tLegs;
+      const sim = this.runSyncSimulation(slateData, 2000);
+      const analytics = this.calculateAnalytics(sim, slateData);
+      
+      // Strict filter: require non-negative synergy (no clashing picks)
+      if (analytics.correlationBoostPct >= 0) {
+        evaluatedTickets.push({
+          legs: tLegs,
+          evPct: analytics.expectedValuePct,
+          boostPct: analytics.correlationBoostPct,
+          analytics
+        });
       }
     });
 
-    const selected = [...bestGamePair];
-    const usedGames = new Set(selected.map(l => l.gameId));
+    // Restore previous slip state
+    this.legs = prevSlip;
 
-    // Fill remaining legs up to legsCount with top value/win candidate legs from independent games
-    if (selected.length < legsCount) {
-      const otherCandidates = [];
-      weekData.games.forEach(g => {
-        if (!usedGames.has(g.id)) {
-          const gameLegs = buildLegsForGame(g);
-          const isHomeFav = (g.homeWinProb || 0.5) >= 0.5;
-          const favTeam = isHomeFav ? g.homeTeam : g.awayTeam;
-          const favMl = gameLegs.find(l => l.marketCategory === 'moneyline' && l.selection === favTeam);
-          if (favMl && favMl.winProb >= 0.60) {
-            otherCandidates.push(favMl);
-          } else {
-            const spreadFav = gameLegs.find(l => l.marketCategory === 'spread' && l.selection === favTeam);
-            if (spreadFav) otherCandidates.push(spreadFav);
-          }
-        }
-      });
+    evaluatedTickets.sort((a, b) => b.evPct - a.evPct);
 
-      otherCandidates.sort((a, b) => b.winProb - a.winProb);
-
-      for (const cand of otherCandidates) {
-        if (selected.length >= legsCount) break;
-        if (!usedGames.has(cand.gameId)) {
-          selected.push(cand);
-          usedGames.add(cand.gameId);
-        }
-      }
+    if (evaluatedTickets.length > 0) {
+      return evaluatedTickets[0].legs;
     }
 
-    // Fallback if still under legsCount
-    if (selected.length < legsCount) {
-      const allCandidates = [];
-      weekData.games.forEach(g => {
-        if (!usedGames.has(g.id)) {
-          const gameLegs = buildLegsForGame(g);
-          gameLegs.forEach(leg => allCandidates.push(leg));
-        }
-      });
-      allCandidates.sort((a, b) => b.winProb - a.winProb);
-      for (const cand of allCandidates) {
-        if (selected.length >= legsCount) break;
-        if (!usedGames.has(cand.gameId)) {
-          selected.push(cand);
-          usedGames.add(cand.gameId);
-        }
+    // Fallback if no valid SGP candidates
+    const fallback = [];
+    const usedGames = new Set();
+    for (const leg of independentCandidates) {
+      if (fallback.length >= legsCount) break;
+      if (!usedGames.has(leg.gameId)) {
+        fallback.push(leg);
+        usedGames.add(leg.gameId);
       }
     }
-
-    return selected.slice(0, legsCount);
+    return fallback;
   }
 }
