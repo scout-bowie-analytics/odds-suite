@@ -287,6 +287,9 @@ async function main() {
   console.log(`🎯 Normalized ${parsedGamesCount} live matchups ready for slate merging.\n`);
 
   // 3. Directly Mutate Each Slate File In Place & Save
+  let gamesUpdated = 0;
+  const updatedSummaryList = [];
+
   for (const slatePath of slatePaths) {
     let slateData;
     try {
@@ -297,7 +300,7 @@ async function main() {
       continue;
     }
 
-    let updatedGamesCount = 0;
+    let slateFileUpdatedCount = 0;
 
     for (let w = 0; w < slateData.length; w++) {
       const weekObj = slateData[w];
@@ -305,70 +308,78 @@ async function main() {
 
       for (let g = 0; g < weekObj.games.length; g++) {
         const targetGame = weekObj.games[g];
-        
-        // Exact Two-Way Match or Inverted Neutral-Site Match Check:
-        const directKey = `${targetGame.homeTeam}_${targetGame.awayTeam}`;
-        const invertedKey = `${targetGame.awayTeam}_${targetGame.homeTeam}`;
+        const oldSpread = targetGame.spread;
+        const oldTotal = targetGame.total;
 
-        let live = null;
-        let isInverted = false;
+        // Check all parsed API matchups
+        for (const [key, live] of apiLookup.entries()) {
+          const apiHome = live.homeCode;
+          const apiAway = live.awayCode;
 
-        if (apiLookup.has(directKey)) {
-          live = apiLookup.get(directKey);
-          isInverted = false;
-        } else if (apiLookup.has(invertedKey)) {
-          live = apiLookup.get(invertedKey);
-          isInverted = true;
-        }
+          // Exact Two-Way Match
+          const isMatch = (targetGame.homeTeam === apiHome && targetGame.awayTeam === apiAway) || 
+                          (targetGame.homeTeam === apiAway && targetGame.awayTeam === apiHome);
 
-        if (!live) continue;
+          if (!isMatch) continue;
 
-        // Verify BOTH teams match explicitly (Two-Way Matching)
-        const matchBothDirect = (targetGame.homeTeam === live.homeCode && targetGame.awayTeam === live.awayCode);
-        const matchBothInverted = (targetGame.homeTeam === live.awayCode && targetGame.awayTeam === live.homeCode);
+          const isInverted = (targetGame.homeTeam === apiAway && targetGame.awayTeam === apiHome);
+          let modified = false;
 
-        if (!matchBothDirect && !matchBothInverted) continue;
-
-        let modified = false;
-
-        // Direct in-place mutation: Spread (Invert spread point if home/away is flipped by bookmaker)
-        if (live.spread !== null && live.spread !== undefined) {
-          const newSpread = isInverted ? -Number(live.spread) : Number(live.spread);
-          targetGame.spread = newSpread;
-          targetGame.spreadOdds = Number(live.spreadOdds) || -110;
-          modified = true;
-        }
-
-        // Direct in-place mutation: Total
-        if (live.total !== null && live.total !== undefined) {
-          targetGame.total = Number(live.total);
-          targetGame.totalOverOdds = Number(live.totalOverOdds) || -110;
-          targetGame.totalUnderOdds = Number(live.totalUnderOdds) || -110;
-          modified = true;
-        }
-
-        // Direct in-place mutation: Moneyline & Win Probabilities
-        if (live.homeMoneyline !== null && live.awayMoneyline !== null && live.homeMoneyline !== undefined && live.awayMoneyline !== undefined) {
-          const newHomeMl = isInverted ? Number(live.awayMoneyline) : Number(live.homeMoneyline);
-          const newAwayMl = isInverted ? Number(live.homeMoneyline) : Number(live.awayMoneyline);
-
-          targetGame.homeMoneyline = newHomeMl;
-          targetGame.awayMoneyline = newAwayMl;
-
-          const hImp = americanToImplied(targetGame.homeMoneyline);
-          const aImp = americanToImplied(targetGame.awayMoneyline);
-          const sumImp = hImp + aImp;
-
-          if (sumImp > 0) {
-            targetGame.homeWinProb = Number((hImp / sumImp).toFixed(2));
-            targetGame.awayWinProb = Number((1 - targetGame.homeWinProb).toFixed(2));
+          // Direct in-place mutation: Spread (Invert spread point if home/away is flipped by bookmaker)
+          if (live.spread !== null && live.spread !== undefined) {
+            const newSpread = isInverted ? -Number(live.spread) : Number(live.spread);
+            targetGame.spread = newSpread;
+            targetGame.spreadOdds = Number(live.spreadOdds) || -110;
+            modified = true;
           }
-          modified = true;
-        }
 
-        if (modified) {
-          updatedGamesCount++;
-          console.log(`  🔄 [Week ${weekObj.week}] ${targetGame.awayTeam} @ ${targetGame.homeTeam} ➔ Spread: ${targetGame.spread > 0 ? '+' + targetGame.spread : targetGame.spread} (${targetGame.spreadOdds}) | Total: ${targetGame.total} | ML: ${targetGame.homeTeam} ${targetGame.homeMoneyline > 0 ? '+' + targetGame.homeMoneyline : targetGame.homeMoneyline} / ${targetGame.awayTeam} ${targetGame.awayMoneyline > 0 ? '+' + targetGame.awayMoneyline : targetGame.awayMoneyline} [${live.bookmaker}]`);
+          // Direct in-place mutation: Total
+          if (live.total !== null && live.total !== undefined) {
+            targetGame.total = Number(live.total);
+            targetGame.totalOverOdds = Number(live.totalOverOdds) || -110;
+            targetGame.totalUnderOdds = Number(live.totalUnderOdds) || -110;
+            modified = true;
+          }
+
+          // Direct in-place mutation: Moneyline & Win Probabilities
+          if (live.homeMoneyline !== null && live.awayMoneyline !== null && live.homeMoneyline !== undefined && live.awayMoneyline !== undefined) {
+            const newHomeMl = isInverted ? Number(live.awayMoneyline) : Number(live.homeMoneyline);
+            const newAwayMl = isInverted ? Number(live.homeMoneyline) : Number(live.awayMoneyline);
+
+            targetGame.homeMoneyline = newHomeMl;
+            targetGame.awayMoneyline = newAwayMl;
+
+            const hImp = americanToImplied(targetGame.homeMoneyline);
+            const aImp = americanToImplied(targetGame.awayMoneyline);
+            const sumImp = hImp + aImp;
+
+            if (sumImp > 0) {
+              targetGame.homeWinProb = Number((hImp / sumImp).toFixed(2));
+              targetGame.awayWinProb = Number((1 - targetGame.homeWinProb).toFixed(2));
+            }
+            modified = true;
+          }
+
+          if (modified) {
+            gamesUpdated++;
+            slateFileUpdatedCount++;
+            
+            // Only add to summary table once per unique matchup across files
+            const existingSummary = updatedSummaryList.find(s => s.Week === `Week ${weekObj.week}` && s.Matchup === `${targetGame.awayTeam} @ ${targetGame.homeTeam}`);
+            if (!existingSummary) {
+              updatedSummaryList.push({
+                'Week': `Week ${weekObj.week}`,
+                'Matchup': `${targetGame.awayTeam} @ ${targetGame.homeTeam}`,
+                'Old Spread': oldSpread !== null && oldSpread !== undefined ? (oldSpread > 0 ? `+${oldSpread}` : `${oldSpread}`) : 'N/A',
+                'New Spread': targetGame.spread > 0 ? `+${targetGame.spread}` : `${targetGame.spread}`,
+                'Old Total': oldTotal ?? 'N/A',
+                'New Total': targetGame.total,
+                'Bookmaker': live.bookmaker || 'DraftKings'
+              });
+            }
+          }
+
+          break; // Match found and applied for this game
         }
       }
     }
@@ -379,7 +390,41 @@ async function main() {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(slatePath, JSON.stringify(slateData, null, 2) + '\n', 'utf8');
-    console.log(`\n💾 Saved ${updatedGamesCount} live odds updates to: ${slatePath}`);
+    console.log(`💾 Saved ${slateFileUpdatedCount} live odds updates to: ${slatePath}`);
+  }
+
+  // 4. Automated Integrity Assertion Checks
+  console.log('\n📊 Formatted Verification Summary Table:');
+  if (updatedSummaryList.length > 0) {
+    console.table(updatedSummaryList);
+  }
+
+  // Strict Fail-Safe Assertion: If 0 games updated, throw loud error
+  if (gamesUpdated === 0) {
+    throw new Error("Validation Error: 0 games updated. Check team normalization or slate structure.");
+  }
+
+  // Specific Match Verification: Explicitly verify and log DET @ BUF in Week 2
+  for (const slatePath of slatePaths) {
+    if (!fs.existsSync(slatePath)) continue;
+    const data = JSON.parse(fs.readFileSync(slatePath, 'utf8'));
+    const w2 = data.find(w => w.week === 2);
+    const detBuf = w2?.games?.find(g => (g.homeTeam === 'BUF' && g.awayTeam === 'DET') || (g.homeTeam === 'DET' && g.awayTeam === 'BUF'));
+
+    if (detBuf) {
+      const isBufHome = detBuf.homeTeam === 'BUF';
+      const expectedSpread = isBufHome ? -4.5 : 4.5;
+      const expectedTotal = 54.5;
+
+      const spreadMatches = Math.abs(detBuf.spread - expectedSpread) < 0.01;
+      const totalMatches = Math.abs(detBuf.total - expectedTotal) < 0.01;
+
+      console.log(`\n🔍 [Specific Match Check] ${slatePath}:`);
+      console.log(`   Matchup: ${detBuf.awayTeam} @ ${detBuf.homeTeam} (ID: ${detBuf.id})`);
+      console.log(`   Spread: ${detBuf.spread} (Expected: ${expectedSpread}) ➔ ${spreadMatches ? '✅ VALID' : '⚠️ MISMATCH'}`);
+      console.log(`   Total: ${detBuf.total} (Expected: ${expectedTotal}) ➔ ${totalMatches ? '✅ VALID' : '⚠️ MISMATCH'}`);
+      console.log(`   Moneyline: ${detBuf.homeTeam} ${detBuf.homeMoneyline} / ${detBuf.awayTeam} ${detBuf.awayMoneyline}`);
+    }
   }
 
   console.log('\n🎉 Live Odds Sync Complete! All lines synchronized successfully. 🐾');

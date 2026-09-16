@@ -1232,6 +1232,17 @@ body {
   box-sizing: border-box;
 }
 
+/* Desktop Viewport Optimization: Eliminate vertical scrollbar on drawer and items */
+@media (min-width: 1024px) {
+  .bet-slip-panel,
+  .slip-legs-list,
+  .quick-build-widget {
+    height: fit-content !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+}
+
 /* Mobile Drawer Overlay on small screens */
 @media (max-width: 1080px) {
   .bet-slip-panel {
