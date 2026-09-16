@@ -603,10 +603,18 @@ export class ParlayEngine {
 
   /**
    * ⚡ AUTO-GENERATE TICKET BUILDER
-   * Algorithmic ticket generator for High Win % and Best Value (+EV) / Correlated SGP strategies.
-   * 1. Pre-Filtered SGP Candidate Pool: Strictly requires positive synergy (synergy > 0).
-   * 2. Multi-Leg Vig Minimization: Avoids heavy moneyline juice traps (shorter than -250).
-   * 3. EV / Edge Maximization: Evaluates candidate combinations and selects the ticket with highest Expected Value.
+   * Algorithmic ticket generator with quantitative guardrails for High Win % and Best Value (+EV) strategies.
+   * 
+   * Guardrails for "Best Value (+EV)":
+   * 1. Symmetrical Moneyline Cap: Limits moneyline candidates strictly between -200 and +175.
+   * 2. Spread Substitution: Replaces extreme underdog moneylines with Point Spreads (e.g., NO +11) in correlated SGP pairs.
+   * 3. Realistic Payout Targets: Calibrated target payout windows (2-Leg: +220 to +400, 3-Leg: +450 to +750, 4-Leg: +850 to +1400).
+   * 
+   * Guardrails for "High Win %":
+   * 1. Minimum Payout Floor: Enforces that tickets must pay plus money (minimum target: +110 to +180 for 3 legs).
+   * 2. Maximum Juice Cap on Individual Legs: Disallows individual legs steeper than -220.
+   * 3. Smart Favorites: Prioritizes low-vig point spreads (-110) or totals for teams favored to control game script rather than eating -575 hold.
+   * 
    * @param {Array} slateData - 18-week slate data array
    * @param {number} week - Active week index (1-18)
    * @param {Object} options - { legsCount: 2-5, strategy: 'high_win' | 'best_value' }
@@ -735,55 +743,146 @@ export class ParlayEngine {
       ];
     };
 
-    // Strategy === 'high_win' (Favorites & strong moneylines across independent games)
-    if (strategy === 'high_win') {
-      const allCandidates = [];
-      weekData.games.forEach(g => {
-        const gameLegs = buildLegsForGame(g);
-        gameLegs.forEach(leg => allCandidates.push(leg));
-      });
-
-      allCandidates.sort((a, b) => b.winProb - a.winProb);
-
-      const selected = [];
-      const usedGames = new Set();
-
-      for (const cand of allCandidates) {
-        if (selected.length >= legsCount) break;
-        if (!usedGames.has(cand.gameId)) {
-          selected.push(cand);
-          usedGames.add(cand.gameId);
-        }
-      }
-
-      return selected;
-    }
-
-    // Strategy === 'best_value' (+EV / Pre-Filtered SGP / Low-Vig Minimization / Edge Maximization)
     const prevSlip = [...this.legs];
 
-    // 1. Pre-Filtered SGP Candidate Pool (Spread/ML + Total, strictly synergy > 0, no ML < -250 juice traps)
+    // ==========================================
+    // 1. STRATEGY: HIGH WIN % (PLUS MONEY FLOOR + JUICE CAP)
+    // ==========================================
+    if (strategy === 'high_win') {
+      const highWinCandidates = [];
+      weekData.games.forEach(g => {
+        const gameLegs = buildLegsForGame(g);
+        const isHomeFav = (g.homeWinProb || 0.5) >= 0.5;
+        const favTeam = isHomeFav ? g.homeTeam : g.awayTeam;
+        const favWinProb = isHomeFav ? Number(g.homeWinProb || 0.5) : Number(g.awayWinProb || 0.5);
+
+        const favMl = gameLegs.find(l => l.marketCategory === 'moneyline' && l.selection === favTeam);
+        const favSpread = gameLegs.find(l => l.marketCategory === 'spread' && l.selection === favTeam);
+        const overLeg = gameLegs.find(l => l.marketCategory === 'total' && l.selection === 'OVER');
+        const underLeg = gameLegs.find(l => l.marketCategory === 'total' && l.selection === 'UNDER');
+
+        // Valid moneyline within juice cap (-220 to -105)
+        if (favMl && favMl.bookOdds >= -220 && favMl.bookOdds <= -105) {
+          highWinCandidates.push({ ...favMl, priority: favWinProb * 1.3 });
+        }
+
+        // Smart Favorite Spread: If moneyline is steeper than -220, use low-vig spread (-110)
+        if (favSpread) {
+          highWinCandidates.push({ ...favSpread, priority: 0.52 + (favWinProb * 0.1) });
+        }
+
+        // Standard Totals
+        if (overLeg) highWinCandidates.push({ ...overLeg, priority: 0.50 });
+        if (underLeg) highWinCandidates.push({ ...underLeg, priority: 0.50 });
+      });
+
+      const gamesMap = new Map();
+      highWinCandidates.forEach(l => {
+        if (!gamesMap.has(l.gameId)) gamesMap.set(l.gameId, []);
+        gamesMap.get(l.gameId).push(l);
+      });
+
+      const gameIds = Array.from(gamesMap.keys());
+      const getCombinations = (arr, k) => {
+        if (k === 1) return arr.map(x => [x]);
+        const result = [];
+        for (let i = 0; i <= arr.length - k; i++) {
+          const head = arr[i];
+          const tailCombos = getCombinations(arr.slice(i + 1), k - 1);
+          tailCombos.forEach(t => result.push([head, ...t]));
+        }
+        return result;
+      };
+
+      const gameCombos = getCombinations(gameIds, legsCount).slice(0, 25);
+      const candidateTickets = [];
+
+      gameCombos.forEach(gCombo => {
+        const ticketLegs = gCombo.map(gid => {
+          const list = gamesMap.get(gid);
+          list.sort((a, b) => b.priority - a.priority);
+          return list[0];
+        });
+        candidateTickets.push(ticketLegs);
+      });
+
+      // Enforce Minimum Payout Floor (Parlay must pay plus money: effectiveAmericanOdds >= +100)
+      const evaluatedTickets = [];
+      candidateTickets.forEach(tLegs => {
+        this.legs = tLegs;
+        const sim = this.runSyncSimulation(slateData, 2000);
+        const analytics = this.calculateAnalytics(sim, slateData);
+
+        const isPlusMoney = analytics.effectiveAmericanOdds >= 100;
+        const payoutScore = isPlusMoney ? 100 : -1000;
+
+        evaluatedTickets.push({
+          legs: tLegs,
+          winProb: analytics.simWinProbPct,
+          odds: analytics.effectiveAmericanOdds,
+          score: (analytics.simWinProbPct * 2) + payoutScore,
+          analytics
+        });
+      });
+
+      evaluatedTickets.sort((a, b) => b.score - a.score);
+      this.legs = prevSlip;
+
+      return evaluatedTickets[0]?.legs || [];
+    }
+
+    // ==========================================
+    // 2. STRATEGY: BEST VALUE (+EV GUARDRAILS)
+    // ==========================================
+    const targetPayoutRanges = {
+      2: { min: 220, max: 400 },
+      3: { min: 450, max: 750 },
+      4: { min: 850, max: 1400 },
+      5: { min: 1500, max: 2800 }
+    };
+    const targetRange = targetPayoutRanges[legsCount] || { min: 200, max: 2000 };
+
+    // Step A: Pre-Filtered SGP Candidate Pool
+    // 1. Symmetrical Moneyline Cap: Limit ML between -200 and +175
+    // 2. Spread Substitution: Prioritize Point Spreads (Favorite or Underdog) with Totals
     const validSgpPairs = [];
     weekData.games.forEach(g => {
       const gameLegs = buildLegsForGame(g);
-      const sideLegs = gameLegs.filter(l => l.marketCategory === 'spread' || l.marketCategory === 'moneyline');
+      const spreadLegs = gameLegs.filter(l => l.marketCategory === 'spread');
       const totalLegs = gameLegs.filter(l => l.marketCategory === 'total');
+      const mlLegs = gameLegs.filter(l => l.marketCategory === 'moneyline' && l.bookOdds >= -200 && l.bookOdds <= 175);
 
-      sideLegs.forEach(side => {
-        // Disallow heavy ML juice traps (< -250) where bookmaker hold is concentrated
-        if (side.marketCategory === 'moneyline' && side.bookOdds < -250) return;
-
+      // Primary: Point Spread (Spread Substitution) + Total
+      spreadLegs.forEach(sp => {
         totalLegs.forEach(tot => {
-          this.legs = [side, tot];
-          const sim = this.runSyncSimulation(slateData, 2000);
+          this.legs = [sp, tot];
+          const sim = this.runSyncSimulation(slateData, 3000);
           const analytics = this.calculateAnalytics(sim, slateData);
 
-          // Require strictly positive correlation (synergy > 0)
-          if (analytics.correlationBoostPct > 0) {
+          if (analytics.correlationBoostPct >= 0.3) {
             validSgpPairs.push({
-              pair: [side, tot],
+              pair: [sp, tot],
               gameId: g.id,
-              matchup: `${g.awayTeam} @ ${g.homeTeam}`,
+              boostPct: analytics.correlationBoostPct,
+              evPct: analytics.expectedValuePct,
+              winProbPct: analytics.simWinProbPct,
+              odds: analytics.effectiveAmericanOdds
+            });
+          }
+        });
+      });
+
+      // Secondary: Moderate Moneyline (-200 to +175) + Total
+      mlLegs.forEach(ml => {
+        totalLegs.forEach(tot => {
+          this.legs = [ml, tot];
+          const sim = this.runSyncSimulation(slateData, 3000);
+          const analytics = this.calculateAnalytics(sim, slateData);
+
+          if (analytics.correlationBoostPct >= 0.3) {
+            validSgpPairs.push({
+              pair: [ml, tot],
+              gameId: g.id,
               boostPct: analytics.correlationBoostPct,
               evPct: analytics.expectedValuePct,
               winProbPct: analytics.simWinProbPct,
@@ -794,35 +893,30 @@ export class ParlayEngine {
       });
     });
 
-    // Sort SGP pairs by Expected Value descending
     validSgpPairs.sort((a, b) => b.evPct - a.evPct);
 
-    // 2. Multi-Leg Vig Minimization: Pre-filtered independent legs from other games
+    // Step B: Multi-Leg Vig Minimization (Distinct Games for 3+ leg tickets)
     const independentCandidates = [];
     weekData.games.forEach(g => {
       const gameLegs = buildLegsForGame(g);
       gameLegs.forEach(leg => {
-        // Exclude heavy moneyline juice traps (odds shorter than -250, e.g. -575)
-        if (leg.marketCategory === 'moneyline' && leg.bookOdds < -250) return;
-        
-        // Standard spread/total lines (-110) or modest moneylines (-250 to +200)
-        if (leg.marketCategory === 'spread' || leg.marketCategory === 'total') {
-          independentCandidates.push(leg);
-        } else if (leg.marketCategory === 'moneyline' && leg.bookOdds >= -250 && leg.bookOdds <= 200) {
+        if (leg.marketCategory === 'moneyline') {
+          if (leg.bookOdds >= -200 && leg.bookOdds <= 175) {
+            independentCandidates.push(leg);
+          }
+        } else if (leg.marketCategory === 'spread' || leg.marketCategory === 'total') {
           independentCandidates.push(leg);
         }
       });
     });
 
-    // 3. EV / Edge Maximization: Build candidate combinations of size legsCount
+    // Step C: EV / Edge Maximization with Realistic Payout Scoring
     const candidateTickets = [];
 
     if (legsCount === 2) {
-      if (validSgpPairs.length > 0) {
-        validSgpPairs.slice(0, 10).forEach(sp => candidateTickets.push(sp.pair));
-      }
+      validSgpPairs.forEach(sp => candidateTickets.push(sp.pair));
     } else {
-      const topPairs = validSgpPairs.slice(0, 6);
+      const topPairs = validSgpPairs.slice(0, 10);
       topPairs.forEach(sgp => {
         const pairGameId = sgp.gameId;
         const otherGameLegs = independentCandidates.filter(l => l.gameId !== pairGameId);
@@ -846,7 +940,7 @@ export class ParlayEngine {
           return result;
         };
 
-        const gameCombos = getCombinations(gameIds, needed).slice(0, 4);
+        const gameCombos = getCombinations(gameIds, needed).slice(0, 8);
         gameCombos.forEach(gCombo => {
           const additionalLegs = gCombo.map(gid => {
             const legsForG = gamesMap.get(gid);
@@ -858,34 +952,43 @@ export class ParlayEngine {
       });
     }
 
-    // 4. Rank candidates by Highest Expected Value and non-negative correlation
     const evaluatedTickets = [];
     candidateTickets.forEach(tLegs => {
       this.legs = tLegs;
-      const sim = this.runSyncSimulation(slateData, 2000);
+      const sim = this.runSyncSimulation(slateData, 3000);
       const analytics = this.calculateAnalytics(sim, slateData);
-      
-      // Strict filter: require non-negative synergy (no clashing picks)
-      if (analytics.correlationBoostPct >= 0) {
+
+      if (analytics.correlationBoostPct >= 0.25) {
+        const odds = analytics.effectiveAmericanOdds;
+        let rangePenalty = 0;
+        if (odds < targetRange.min) {
+          rangePenalty = Math.abs(targetRange.min - odds) * 0.15;
+        } else if (odds > targetRange.max) {
+          rangePenalty = Math.abs(odds - targetRange.max) * 0.15;
+        }
+
+        const totalScore = analytics.expectedValuePct - rangePenalty;
+
         evaluatedTickets.push({
           legs: tLegs,
           evPct: analytics.expectedValuePct,
           boostPct: analytics.correlationBoostPct,
+          winProbPct: analytics.simWinProbPct,
+          odds: analytics.effectiveAmericanOdds,
+          totalScore,
           analytics
         });
       }
     });
 
-    // Restore previous slip state
+    evaluatedTickets.sort((a, b) => b.totalScore - a.totalScore);
     this.legs = prevSlip;
-
-    evaluatedTickets.sort((a, b) => b.evPct - a.evPct);
 
     if (evaluatedTickets.length > 0) {
       return evaluatedTickets[0].legs;
     }
 
-    // Fallback if no valid SGP candidates
+    // Fallback if no valid SGP combinations
     const fallback = [];
     const usedGames = new Set();
     for (const leg of independentCandidates) {
