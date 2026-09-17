@@ -432,9 +432,9 @@ const VERIFIED_CONSENSUS_FEED = [
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'Los Angeles Rams', price: -110, point: -9.5 }, { name: 'New York Giants', price: -110, point: 9.5 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 46.5 }, { name: 'Under', price: -110, point: 46.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Los Angeles Rams', price: -450 }, { name: 'New York Giants', price: 350 }] }
+        { key: 'spreads', outcomes: [{ name: 'Los Angeles Rams', price: -110, point: -7.0 }, { name: 'New York Giants', price: -110, point: 7.0 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 48.5 }, { name: 'Under', price: -110, point: 48.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Los Angeles Rams', price: -350 }, { name: 'New York Giants', price: 280 }] }
       ]
     }]
   },
@@ -447,9 +447,9 @@ const VERIFIED_CONSENSUS_FEED = [
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'Baltimore Ravens', price: -115, point: -7.5 }, { name: 'New Orleans Saints', price: -105, point: 7.5 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -118, point: 46.5 }, { name: 'Under', price: -102, point: 46.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Baltimore Ravens', price: -380 }, { name: 'New Orleans Saints', price: 300 }] }
+        { key: 'spreads', outcomes: [{ name: 'Baltimore Ravens', price: -110, point: -8.5 }, { name: 'New Orleans Saints', price: -110, point: 8.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 46.5 }, { name: 'Under', price: -110, point: 46.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Baltimore Ravens', price: -425 }, { name: 'New Orleans Saints', price: 325 }] }
       ]
     }]
   },
@@ -477,9 +477,9 @@ const VERIFIED_CONSENSUS_FEED = [
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'Kansas City Chiefs', price: -110, point: -11.0 }, { name: 'Indianapolis Colts', price: -110, point: 11.0 }] },
+        { key: 'spreads', outcomes: [{ name: 'Kansas City Chiefs', price: -110, point: -6.5 }, { name: 'Indianapolis Colts', price: -110, point: 6.5 }] },
         { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 47.5 }, { name: 'Under', price: -110, point: 47.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Kansas City Chiefs', price: -575 }, { name: 'Indianapolis Colts', price: 425 }] }
+        { key: 'h2h', outcomes: [{ name: 'Kansas City Chiefs', price: -310 }, { name: 'Indianapolis Colts', price: 250 }] }
       ]
     }]
   },
@@ -492,9 +492,9 @@ const VERIFIED_CONSENSUS_FEED = [
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'Dallas Cowboys', price: -110, point: -5.5 }, { name: 'Washington Commanders', price: -110, point: 5.5 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 44.5 }, { name: 'Under', price: -110, point: 44.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Dallas Cowboys', price: -240 }, { name: 'Washington Commanders', price: 195 }] }
+        { key: 'spreads', outcomes: [{ name: 'Dallas Cowboys', price: -110, point: -3.5 }, { name: 'Washington Commanders', price: -110, point: 3.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 50.5 }, { name: 'Under', price: -110, point: 50.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Dallas Cowboys', price: -210 }, { name: 'Washington Commanders', price: 175 }] }
       ]
     }]
   },
@@ -552,9 +552,9 @@ const VERIFIED_CONSENSUS_FEED = [
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'San Francisco 49ers', price: -110, point: -7.0 }, { name: 'Miami Dolphins', price: -110, point: 7.0 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 43.5 }, { name: 'Under', price: -110, point: 43.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'San Francisco 49ers', price: -310 }, { name: 'Miami Dolphins', price: 250 }] }
+        { key: 'spreads', outcomes: [{ name: 'San Francisco 49ers', price: -110, point: -13.5 }, { name: 'Miami Dolphins', price: -110, point: 13.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 45.5 }, { name: 'Under', price: -110, point: 45.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'San Francisco 49ers', price: -900 }, { name: 'Miami Dolphins', price: 600 }] }
       ]
     }]
   },
@@ -635,7 +635,7 @@ async function main() {
   let apiGames = [];
 
   if (apiKey) {
-    // 1. Fetch live from The Odds API v4
+    // 1. Fetch live from The Odds API v4 (Quota Safeguard: strictly locked to regions=us & markets=h2h,spreads,totals)
     const apiUrl = `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
     console.log('\n🌐 Requesting live NFL lines from The Odds API v4...');
 
@@ -654,6 +654,9 @@ async function main() {
       }
 
       apiGames = await res.json();
+      if (!Array.isArray(apiGames) || apiGames.length === 0) {
+        throw new Error('The Odds API returned zero upcoming NFL games or empty array. Failing closed.');
+      }
       console.log(`✅ Successfully fetched ${apiGames.length} upcoming NFL matchups from The Odds API.`);
     } catch (err) {
       console.error(`❌ Failed to fetch odds from The Odds API: ${err.message}`);

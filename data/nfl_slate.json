@@ -1,5 +1,5 @@
 {
-  "lastSyncedAt": "2026-09-17T14:30:14.703Z",
+  "lastSyncedAt": "2026-09-17T15:22:53.958Z",
   "syncStatus": "COMPLETE",
   "totalGames": 272,
   "syncedGames": 272,
@@ -364,17 +364,17 @@
           "awayTeam": "NYG",
           "homeTeamName": "Los Angeles Rams",
           "awayTeamName": "New York Giants",
-          "spread": -9.5,
-          "total": 46.5,
-          "homeWinProb": 0.79,
-          "awayWinProb": 0.21,
+          "spread": -7,
+          "total": 48.5,
+          "homeWinProb": 0.75,
+          "awayWinProb": 0.25,
           "homePickPct": 0.139,
           "awayPickPct": 0,
           "spreadOdds": -110,
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
-          "homeMoneyline": -450,
-          "awayMoneyline": 350
+          "homeMoneyline": -350,
+          "awayMoneyline": 280
         },
         {
           "id": "w2_bal_no",
@@ -382,17 +382,17 @@
           "awayTeam": "NO",
           "homeTeamName": "Baltimore Ravens",
           "awayTeamName": "New Orleans Saints",
-          "spread": -7.5,
+          "spread": -8.5,
           "total": 46.5,
-          "homeWinProb": 0.76,
-          "awayWinProb": 0.24,
+          "homeWinProb": 0.77,
+          "awayWinProb": 0.23,
           "homePickPct": 0.318,
           "awayPickPct": 0,
-          "spreadOdds": -115,
+          "spreadOdds": -110,
           "totalOverOdds": -118,
           "totalUnderOdds": -102,
-          "homeMoneyline": -380,
-          "awayMoneyline": 300
+          "homeMoneyline": -425,
+          "awayMoneyline": 325
         },
         {
           "id": "w2_atl_car",
@@ -418,17 +418,17 @@
           "awayTeam": "IND",
           "homeTeamName": "Kansas City Chiefs",
           "awayTeamName": "Indianapolis Colts",
-          "spread": -11,
+          "spread": -6.5,
           "total": 47.5,
-          "homeWinProb": 0.82,
-          "awayWinProb": 0.18,
+          "homeWinProb": 0.73,
+          "awayWinProb": 0.27,
           "homePickPct": 0.219,
           "awayPickPct": 0,
           "spreadOdds": -110,
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
-          "homeMoneyline": -575,
-          "awayMoneyline": 425
+          "homeMoneyline": -310,
+          "awayMoneyline": 250
         },
         {
           "id": "w2_dal_was",
@@ -436,17 +436,17 @@
           "awayTeam": "WAS",
           "homeTeamName": "Dallas Cowboys",
           "awayTeamName": "Washington Commanders",
-          "spread": -5.5,
-          "total": 44.5,
-          "homeWinProb": 0.68,
-          "awayWinProb": 0.32,
+          "spread": -3.5,
+          "total": 50.5,
+          "homeWinProb": 0.65,
+          "awayWinProb": 0.35,
           "homePickPct": 0.02,
           "awayPickPct": 0,
           "spreadOdds": -110,
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
-          "homeMoneyline": -240,
-          "awayMoneyline": 195
+          "homeMoneyline": -210,
+          "awayMoneyline": 175
         },
         {
           "id": "w2_hou_cin",
@@ -508,17 +508,17 @@
           "awayTeam": "MIA",
           "homeTeamName": "San Francisco 49ers",
           "awayTeamName": "Miami Dolphins",
-          "spread": -7,
-          "total": 43.5,
-          "homeWinProb": 0.73,
-          "awayWinProb": 0.27,
+          "spread": -13.5,
+          "total": 45.5,
+          "homeWinProb": 0.86,
+          "awayWinProb": 0.14,
           "homePickPct": 0.04,
           "awayPickPct": 0,
           "spreadOdds": -110,
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
-          "homeMoneyline": -310,
-          "awayMoneyline": 250
+          "homeMoneyline": -900,
+          "awayMoneyline": 600
         },
         {
           "id": "w2_nyj_gb",
@@ -593,7 +593,7 @@
           "awayMoneyline": 120
         }
       ],
-      "lastSyncedAt": "2026-09-17T14:30:14.703Z",
+      "lastSyncedAt": "2026-09-17T15:22:53.958Z",
       "syncStatus": "COMPLETE"
     },
     {

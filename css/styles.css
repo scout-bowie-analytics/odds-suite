@@ -342,6 +342,13 @@ body {
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.12);
 }
 
+.odds-sync-indicator.stale {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+}
+
 .odds-sync-dot {
   font-size: 10px;
   color: #10b981;
@@ -353,6 +360,13 @@ body {
 .odds-sync-indicator.partial .odds-sync-dot {
   color: #f59e0b;
   text-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+}
+
+.odds-sync-indicator.stale .odds-sync-dot {
+  color: #f59e0b;
+  font-size: 11px;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+  animation: none;
 }
 
 @keyframes pulse-dot {

@@ -655,21 +655,47 @@ class OddsSuiteApp {
     const isComplete = syncStatus === 'COMPLETE';
 
     let timeDisplay = 'Live';
+    let isStale = false;
+    let ageHours = 0;
+
     if (metadata.lastSyncedAt) {
       try {
-        const d = new Date(metadata.lastSyncedAt);
-        timeDisplay = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const syncDate = new Date(metadata.lastSyncedAt);
+        timeDisplay = syncDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+        const syncTime = syncDate.getTime();
+        if (!isNaN(syncTime)) {
+          const ageMs = Date.now() - syncTime;
+          ageHours = ageMs / (1000 * 60 * 60);
+
+          // Active NFL game window: Thursday through Monday (Days: 4 = Thu, 5 = Fri, 6 = Sat, 0 = Sun, 1 = Mon)
+          const dayOfWeek = new Date().getDay();
+          const isGameWindow = [4, 5, 6, 0, 1].includes(dayOfWeek);
+
+          if (isGameWindow && ageHours > 24) {
+            isStale = true;
+          }
+        }
       } catch (e) {
         timeDisplay = 'Live';
       }
     }
 
-    indicator.className = `odds-sync-indicator ${isComplete ? 'complete' : 'partial'}`;
-    indicator.innerHTML = `
-      <span class="odds-sync-dot">●</span>
-      <span id="oddsSyncText">Odds Synced: ${gameCount}/${gameCount} Games (${timeDisplay})</span>
-    `;
-    indicator.title = `Live Odds Consensus: ${isComplete ? '100% Complete' : 'Partial'} (Last synced: ${metadata.lastSyncedAt || 'Live'})`;
+    if (isStale) {
+      indicator.className = 'odds-sync-indicator stale';
+      indicator.innerHTML = `
+        <span class="odds-sync-dot">⚠️</span>
+        <span id="oddsSyncText">⚠️ Odds Stale (Synced >24h ago)</span>
+      `;
+      indicator.title = `Warning: Odds data was synced ${Math.round(ageHours)} hours ago during an active game window. Consensus lines and injury news may have moved! (Last synced: ${metadata.lastSyncedAt})`;
+    } else {
+      indicator.className = `odds-sync-indicator ${isComplete ? 'complete' : 'partial'}`;
+      indicator.innerHTML = `
+        <span class="odds-sync-dot">●</span>
+        <span id="oddsSyncText">Odds Synced: ${gameCount}/${gameCount} Games (${timeDisplay})</span>
+      `;
+      indicator.title = `Live Odds Consensus: ${isComplete ? '100% Complete' : 'Partial'} (Last synced: ${metadata.lastSyncedAt || 'Live'})`;
+    }
   }
 
   renderWeeklySpotlight() {
