@@ -112,7 +112,8 @@ class OddsSuiteApp {
           this.state.parlaySimResults = activeTicket.simResults;
           this.state.autoBuildAccordionOpen = false;
 
-          const stratName = this.state.autoBuildStrategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
+          const stratName = activeTicket.strategyClassification || (this.state.autoBuildStrategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)');
+          this.state.autoBuildStrategyClassification = stratName;
           if (tickets.length > 1) {
             this.showToast(`⚡ Auto-Generated ${tickets.length} Distinct Tickets (${stratName})! 🎯`);
           } else {
@@ -1403,6 +1404,7 @@ class OddsSuiteApp {
     this.parlayEngine.clearSlip();
     (ticket.legs || []).forEach(leg => this.parlayEngine.addLeg(leg));
     this.state.parlaySimResults = ticket.simResults || null;
+    this.state.autoBuildStrategyClassification = ticket.strategyClassification || null;
 
     this.renderParlaySlate();
     this.renderBetSlip();
@@ -1471,7 +1473,8 @@ class OddsSuiteApp {
       this.state.autoBuildAccordionOpen = false;
       this.state.isAutoBuilding = false;
 
-      const stratName = strategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)';
+      const stratName = activeTicket.strategyClassification || (strategy === 'high_win' ? 'High Win %' : 'Best Value (+EV)');
+      this.state.autoBuildStrategyClassification = stratName;
       if (tickets.length > 1) {
         this.showToast(`⚡ Auto-Generated ${tickets.length} Distinct Tickets (${stratName})! 🎯`);
       } else {
@@ -1535,9 +1538,18 @@ class OddsSuiteApp {
     // Update Ticket Type Classification Banner
     const classification = this.parlayEngine.getTicketClassification();
     if (banner) {
+      const activeGenTicket = this.state.generatedTickets && this.state.generatedTickets[this.state.activeTicketIndex];
+      const isVigMinimized = activeGenTicket && activeGenTicket.strategyClassification === 'Best Available (Vig-Minimized)';
+      const badgeClass = isVigMinimized ? 'badge-fair-price' : classification.badgeClass;
+      const badgeLabel = isVigMinimized ? 'Best Available (Vig-Minimized)' : classification.label;
+      const badgeDesc = isVigMinimized
+        ? 'Slate has no +EV combinations. Selected best available lines to minimize bookmaker vig.'
+        : (classification.desc || 'Click any betting pill to build your ticket.');
+      const badgeStyle = isVigMinimized ? 'style="background: rgba(255,184,0,0.15); color: var(--gold-bright); border: 1px solid var(--gold-bright);"' : '';
+
       banner.innerHTML = `
-        <div class="ticket-badge ${classification.badgeClass}">${classification.label}</div>
-        <div class="ticket-badge-desc">${classification.desc || 'Click any betting pill to build your ticket.'}</div>
+        <div class="ticket-badge ${badgeClass}" ${badgeStyle}>${badgeLabel}</div>
+        <div class="ticket-badge-desc">${badgeDesc}</div>
       `;
     }
 
@@ -1691,6 +1703,14 @@ class OddsSuiteApp {
       this.parlayEngine.stake
     );
 
+    const activeGenTicket = this.state.generatedTickets && this.state.generatedTickets[this.state.activeTicketIndex];
+    if (activeGenTicket && activeGenTicket.strategyClassification === 'Best Available (Vig-Minimized)') {
+      analytics.ticketValue.badge = 'Best Available (Vig-Minimized)';
+      analytics.ticketValue.badgeClass = 'badge-fair-price';
+      analytics.ticketValue.color = 'var(--gold-bright)';
+      analytics.ticketValue.subtitle = `Vig minimized (${analytics.vigTaxPct.toFixed(1)}% bookmaker margin)`;
+    }
+
     // Update Stake and Odds Inputs
     const stakeInput = document.getElementById('slipStakeInput');
     if (stakeInput && document.activeElement !== stakeInput) {
@@ -1738,7 +1758,9 @@ class OddsSuiteApp {
     }
 
     if (vigSubEl) {
-      if (analytics.exactSimulatedEvPct !== null && analytics.hasFlatLines) {
+      if (activeGenTicket && activeGenTicket.strategyClassification === 'Best Available (Vig-Minimized)') {
+        vigSubEl.textContent = analytics.ticketValue.subtitle;
+      } else if (analytics.exactSimulatedEvPct !== null && analytics.hasFlatLines) {
         vigSubEl.textContent = `${analytics.ticketValue.subtitle} • Push-Adjusted EV: ${analytics.exactSimulatedEvPct > 0 ? '+' : ''}${analytics.exactSimulatedEvPct}%`;
       } else {
         vigSubEl.textContent = analytics.ticketValue.subtitle;

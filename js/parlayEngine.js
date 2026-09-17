@@ -878,6 +878,8 @@ export class ParlayEngine {
     // 2. "BEST VALUE (+EV)" MODE
     // =========================================================================
     else {
+      const MIN_SGP_SYNERGY_FLOOR = 2.5; // Strictly require >= +2.5% correlation synergy
+
       const maxPayoutCaps = { 2: 450, 3: 850, 4: 1500, 5: 2800 };
       const maxCap = maxPayoutCaps[legsCount] || 1500;
 
@@ -889,7 +891,7 @@ export class ParlayEngine {
       };
       const targetWin = targetWindows[legsCount] || { min: 200, max: 1500 };
 
-      // Step A: Build SGP candidates
+      // Step A: Build SGP candidates with strict synergy floor >= +2.5%
       const validSgpPairs = [];
       weekData.games.forEach(g => {
         const { legs } = buildAllGameLegs(g);
@@ -911,12 +913,18 @@ export class ParlayEngine {
             const analytics = this.calculateAnalytics(sim, slateData);
 
             const odds = analytics.effectiveAmericanOdds;
-            if (analytics.correlationBoostPct >= 0.25 && odds <= 450 && odds >= 180) {
+            const synergy = analytics.correlationBoostPct;
+            const pushAdjustedEV = analytics.exactSimulatedEvPct !== null && analytics.exactSimulatedEvPct !== undefined 
+              ? analytics.exactSimulatedEvPct 
+              : analytics.expectedValuePct;
+
+            if (synergy >= MIN_SGP_SYNERGY_FLOOR && odds <= 450 && odds >= 180) {
               validSgpPairs.push({
                 pair: [sp, tot],
                 gameId: g.id,
-                boostPct: analytics.correlationBoostPct,
+                boostPct: synergy,
                 evPct: analytics.expectedValuePct,
+                pushAdjustedEV,
                 winProbPct: analytics.simWinProbPct,
                 odds
               });
@@ -932,12 +940,18 @@ export class ParlayEngine {
             const analytics = this.calculateAnalytics(sim, slateData);
 
             const odds = analytics.effectiveAmericanOdds;
-            if (analytics.correlationBoostPct >= 0.25 && odds <= 450 && odds >= 180) {
+            const synergy = analytics.correlationBoostPct;
+            const pushAdjustedEV = analytics.exactSimulatedEvPct !== null && analytics.exactSimulatedEvPct !== undefined 
+              ? analytics.exactSimulatedEvPct 
+              : analytics.expectedValuePct;
+
+            if (synergy >= MIN_SGP_SYNERGY_FLOOR && odds <= 450 && odds >= 180) {
               validSgpPairs.push({
                 pair: [ml, tot],
                 gameId: g.id,
-                boostPct: analytics.correlationBoostPct,
+                boostPct: synergy,
                 evPct: analytics.expectedValuePct,
+                pushAdjustedEV,
                 winProbPct: analytics.simWinProbPct,
                 odds
               });
@@ -946,7 +960,7 @@ export class ParlayEngine {
         });
       });
 
-      validSgpPairs.sort((a, b) => b.evPct - a.evPct);
+      validSgpPairs.sort((a, b) => b.pushAdjustedEV - a.pushAdjustedEV);
 
       // Step B: Independent Legs from other games
       const independentCandidates = [];
@@ -963,7 +977,7 @@ export class ParlayEngine {
         });
       });
 
-      // Step C: Form multi-leg candidate combinations
+      // Step C: Form candidate combinations matching exact legsCount
       const candidateTickets = [];
 
       if (legsCount === 2) {
@@ -1007,6 +1021,22 @@ export class ParlayEngine {
         });
       }
 
+      // Also populate pure multi-game independent candidate combinations so batch diversity is guaranteed
+      const indGamesMap = new Map();
+      independentCandidates.forEach(l => {
+        if (!indGamesMap.has(l.gameId)) indGamesMap.set(l.gameId, []);
+        indGamesMap.get(l.gameId).push(l);
+      });
+      const allGameIds = Array.from(indGamesMap.keys());
+      const indCombos = getCombinations(allGameIds, legsCount).slice(0, 30);
+      indCombos.forEach(gCombo => {
+        const indLegs = gCombo.map(gid => {
+          const legsForG = indGamesMap.get(gid);
+          return legsForG.find(l => l.marketCategory === 'spread') || legsForG[0];
+        });
+        candidateTickets.push(indLegs);
+      });
+
       // Step D: Evaluate against Max Payout Cap & Realistic Target Window
       candidateTickets.forEach(tLegs => {
         this.legs = tLegs;
@@ -1018,7 +1048,12 @@ export class ParlayEngine {
         const sim = this.runSyncSimulation(slateData, 2000);
         const analytics = this.calculateAnalytics(sim, slateData);
 
-        if (analytics.correlationBoostPct < 0.1) return;
+        // Positive synergy check: ensure intra-game legs do not clash
+        if (analytics.classification.isSgp && analytics.correlationBoostPct < 0.1) return;
+
+        const pushAdjustedEV = analytics.exactSimulatedEvPct !== null && analytics.exactSimulatedEvPct !== undefined 
+          ? analytics.exactSimulatedEvPct 
+          : analytics.expectedValuePct;
 
         let rangePenalty = 0;
         if (odds < targetWin.min) {
@@ -1027,12 +1062,13 @@ export class ParlayEngine {
           rangePenalty = Math.abs(odds - targetWin.max) * 0.20;
         }
 
-        const totalScore = analytics.expectedValuePct - rangePenalty;
+        const totalScore = pushAdjustedEV - rangePenalty;
 
         evaluated.push({
           legs: tLegs,
           odds,
           evPct: analytics.expectedValuePct,
+          pushAdjustedEV,
           boostPct: analytics.correlationBoostPct,
           winProbPct: analytics.simWinProbPct,
           totalScore,
@@ -1042,32 +1078,70 @@ export class ParlayEngine {
 
       evaluated.sort((a, b) => b.totalScore - a.totalScore);
 
-      // Fallback if no valid SGP found: build uncorrelated value ticket within bounds
-      if (evaluated.length === 0) {
-        const fallbackGames = new Set();
-        const fallbackLegs = [];
-        for (const leg of independentCandidates) {
-          if (fallbackLegs.length >= legsCount) break;
-          if (!fallbackGames.has(leg.gameId)) {
-            fallbackLegs.push(leg);
-            fallbackGames.add(leg.gameId);
-          }
-        }
-        if (fallbackLegs.length === legsCount) {
-          this.legs = fallbackLegs;
-          const uncorr = this.calculateUncorrelatedBookOdds();
-          const sim = this.runSyncSimulation(slateData, 2000);
-          const analytics = this.calculateAnalytics(sim, slateData);
-          evaluated.push({
-            legs: fallbackLegs,
-            odds: uncorr.combinedAmerican,
-            evPct: analytics.expectedValuePct,
-            boostPct: 0,
-            winProbPct: analytics.simWinProbPct,
-            totalScore: analytics.expectedValuePct,
-            analytics
+      // =========================================================================
+      // TRUE +EV VALIDATION & DIRECT VIG-MINIMIZED FALLBACK (Exact legsCount preserved)
+      // =========================================================================
+      const plusEvCandidates = evaluated.filter(c => c.pushAdjustedEV > 0);
+
+      if (plusEvCandidates.length >= ticketCount) {
+        plusEvCandidates.forEach(c => {
+          c.isTruePlusEv = true;
+          c.strategyClassification = 'Best Value (+EV)';
+        });
+        evaluated = plusEvCandidates;
+      } else {
+        // Direct Fallback: No silent downgrading of legs.
+        // Maintain the exact requested legsCount and minimize house vig.
+        if (evaluated.length === 0) {
+          const gamesMap = new Map();
+          independentCandidates.forEach(l => {
+            if (!gamesMap.has(l.gameId)) gamesMap.set(l.gameId, []);
+            gamesMap.get(l.gameId).push(l);
+          });
+          const gameIds = Array.from(gamesMap.keys());
+          const gameCombos = getCombinations(gameIds, legsCount).slice(0, 30);
+          gameCombos.forEach(gCombo => {
+            const fallbackLegs = gCombo.map(gid => {
+              const legsForG = gamesMap.get(gid);
+              return legsForG.find(l => l.marketCategory === 'spread') || legsForG[0];
+            });
+
+            if (fallbackLegs.length === legsCount) {
+              this.legs = fallbackLegs;
+              const uncorr = this.calculateUncorrelatedBookOdds();
+              const odds = uncorr.combinedAmerican;
+              if (odds <= maxCap) {
+                const sim = this.runSyncSimulation(slateData, 2000);
+                const analytics = this.calculateAnalytics(sim, slateData);
+                const pushAdjustedEV = analytics.exactSimulatedEvPct !== null && analytics.exactSimulatedEvPct !== undefined 
+                  ? analytics.exactSimulatedEvPct 
+                  : analytics.expectedValuePct;
+                evaluated.push({
+                  legs: fallbackLegs,
+                  odds,
+                  evPct: analytics.expectedValuePct,
+                  pushAdjustedEV,
+                  boostPct: 0,
+                  winProbPct: analytics.simWinProbPct,
+                  totalScore: pushAdjustedEV,
+                  analytics
+                });
+              }
+            }
           });
         }
+
+        evaluated.sort((a, b) => b.pushAdjustedEV - a.pushAdjustedEV);
+        evaluated.forEach(c => {
+          c.isTruePlusEv = false;
+          c.strategyClassification = 'Best Available (Vig-Minimized)';
+          if (c.analytics && c.analytics.ticketValue) {
+            c.analytics.ticketValue.badge = 'Best Available (Vig-Minimized)';
+            c.analytics.ticketValue.badgeClass = 'badge-fair-price';
+            c.analytics.ticketValue.color = 'var(--gold-bright)';
+            c.analytics.ticketValue.subtitle = `Vig minimized (${c.analytics.vigTaxPct.toFixed(1)}% bookmaker margin)`;
+          }
+        });
       }
     }
 
@@ -1125,6 +1199,12 @@ export class ParlayEngine {
         }
       }
 
+      const pushAdjustedEV = analytics.exactSimulatedEvPct !== null && analytics.exactSimulatedEvPct !== undefined 
+        ? analytics.exactSimulatedEvPct 
+        : analytics.expectedValuePct;
+      const isTruePlusEv = pushAdjustedEV > 0;
+      let strategyClassification = cand.strategyClassification || (isTruePlusEv ? 'Best Value (+EV)' : 'Best Available (Vig-Minimized)');
+
       if (strategy === 'best_value') {
         cand.legs.forEach(leg => {
           if (leg.marketCategory === 'moneyline') {
@@ -1138,6 +1218,19 @@ export class ParlayEngine {
         if (combinedOdds > maxCap) {
           throw new Error(`Best Value Payout Violation: Combined odds +${combinedOdds} exceeds max cap +${maxCap}!`);
         }
+
+        // STRICT TRUTH IN ADVERTISING:
+        // If final 10,000-run simulation indicates pushAdjustedEV <= 0:
+        // strictly re-classify to Best Available (Vig-Minimized) so UI never contradicts itself.
+        if (!isTruePlusEv) {
+          strategyClassification = 'Best Available (Vig-Minimized)';
+          analytics.ticketValue.badge = 'Best Available (Vig-Minimized)';
+          analytics.ticketValue.badgeClass = 'badge-fair-price';
+          analytics.ticketValue.color = 'var(--gold-bright)';
+          analytics.ticketValue.subtitle = `Vig minimized (${analytics.vigTaxPct.toFixed(1)}% bookmaker margin)`;
+        } else {
+          strategyClassification = 'Best Value (+EV)';
+        }
       }
 
       return {
@@ -1147,7 +1240,9 @@ export class ParlayEngine {
         formattedOdds: this.formatAmerican(combinedOdds),
         simResults,
         analytics,
-        classification
+        classification,
+        strategyClassification,
+        isTruePlusEv
       };
     });
 
