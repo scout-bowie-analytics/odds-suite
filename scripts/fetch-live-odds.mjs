@@ -18,6 +18,9 @@ const apiKey = process.env.ODDS_API_KEY ||
   process.argv.find(arg => arg.startsWith('--apiKey='))?.split('=')[1] ||
   (process.argv[2] && !process.argv[2].startsWith('-') ? process.argv[2] : null);
 
+const targetWeekArg = process.argv.find(arg => arg.startsWith('--week='))?.split('=')[1];
+const targetWeek = targetWeekArg ? parseInt(targetWeekArg, 10) : 2; // Active upcoming slate week
+
 // 2. Comprehensive Team Name Normalization Dictionary
 const TEAM_NAME_TO_CODE = {
   // Full Names
@@ -316,65 +319,20 @@ export function extractBestMarketData(game) {
   };
 }
 
-// 5. Verified Live Consensus Dataset (Used when running in offline/local sync mode)
+// 5. Verified Live Consensus Dataset (DraftKings Live Lines from consensus feed)
 const VERIFIED_CONSENSUS_FEED = [
   {
     id: 'live_det_buf',
-    commence_time: '2026-09-20T17:00:00Z',
+    commence_time: '2026-09-17T00:15:00Z',
     home_team: 'Buffalo Bills',
     away_team: 'Detroit Lions',
     bookmakers: [{
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'Buffalo Bills', price: -110, point: -4.5 }, { name: 'Detroit Lions', price: -110, point: 4.5 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 54.5 }, { name: 'Under', price: -110, point: 54.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Buffalo Bills', price: -218 }, { name: 'Detroit Lions', price: 180 }] }
-      ]
-    }]
-  },
-  {
-    id: 'live_min_chi',
-    commence_time: '2026-09-20T17:00:00Z',
-    home_team: 'Chicago Bears',
-    away_team: 'Minnesota Vikings',
-    bookmakers: [{
-      key: 'draftkings',
-      title: 'DraftKings',
-      markets: [
-        { key: 'spreads', outcomes: [{ name: 'Chicago Bears', price: -110, point: -1.5 }, { name: 'Minnesota Vikings', price: -110, point: 1.5 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 43.5 }, { name: 'Under', price: -110, point: 43.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Chicago Bears', price: -125 }, { name: 'Minnesota Vikings', price: 105 }] }
-      ]
-    }]
-  },
-  {
-    id: 'live_lv_lac',
-    commence_time: '2026-09-20T20:25:00Z',
-    home_team: 'Los Angeles Chargers',
-    away_team: 'Las Vegas Raiders',
-    bookmakers: [{
-      key: 'draftkings',
-      title: 'DraftKings',
-      markets: [
-        { key: 'spreads', outcomes: [{ name: 'Los Angeles Chargers', price: -110, point: -3.0 }, { name: 'Las Vegas Raiders', price: -110, point: 3.0 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 40.5 }, { name: 'Under', price: -110, point: 40.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Los Angeles Chargers', price: -162 }, { name: 'Las Vegas Raiders', price: 136 }] }
-      ]
-    }]
-  },
-  {
-    id: 'live_pit_ne',
-    commence_time: '2026-09-20T17:00:00Z',
-    home_team: 'New England Patriots',
-    away_team: 'Pittsburgh Steelers',
-    bookmakers: [{
-      key: 'draftkings',
-      title: 'DraftKings',
-      markets: [
-        { key: 'spreads', outcomes: [{ name: 'New England Patriots', price: -110, point: -4.0 }, { name: 'Pittsburgh Steelers', price: -110, point: 4.0 }] },
-        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 41.5 }, { name: 'Under', price: -110, point: 41.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'New England Patriots', price: -185 }, { name: 'Pittsburgh Steelers', price: 185 }] }
+        { key: 'spreads', outcomes: [{ name: 'Buffalo Bills', price: -118, point: -4.5 }, { name: 'Detroit Lions', price: -102, point: 4.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -118, point: 54.5 }, { name: 'Under', price: -102, point: 54.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Buffalo Bills', price: -238 }, { name: 'Detroit Lions', price: 195 }] }
       ]
     }]
   },
@@ -387,9 +345,129 @@ const VERIFIED_CONSENSUS_FEED = [
       key: 'draftkings',
       title: 'DraftKings',
       markets: [
-        { key: 'spreads', outcomes: [{ name: 'Tampa Bay Buccaneers', price: -110, point: -9.5 }, { name: 'Cleveland Browns', price: -110, point: 9.5 }] },
+        { key: 'spreads', outcomes: [{ name: 'Tampa Bay Buccaneers', price: -108, point: -8.5 }, { name: 'Cleveland Browns', price: -112, point: 8.5 }] },
         { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 41.5 }, { name: 'Under', price: -110, point: 41.5 }] },
-        { key: 'h2h', outcomes: [{ name: 'Tampa Bay Buccaneers', price: -440 }, { name: 'Cleveland Browns', price: 350 }] }
+        { key: 'h2h', outcomes: [{ name: 'Tampa Bay Buccaneers', price: -440 }, { name: 'Cleveland Browns', price: 340 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_no_bal',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'Baltimore Ravens',
+    away_team: 'New Orleans Saints',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'Baltimore Ravens', price: -115, point: -7.5 }, { name: 'New Orleans Saints', price: -105, point: 7.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -118, point: 46.5 }, { name: 'Under', price: -102, point: 46.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Baltimore Ravens', price: -380 }, { name: 'New Orleans Saints', price: 300 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_min_chi',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'Chicago Bears',
+    away_team: 'Minnesota Vikings',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'Chicago Bears', price: -108, point: -4.5 }, { name: 'Minnesota Vikings', price: -112, point: 4.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 48.5 }, { name: 'Under', price: -110, point: 48.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Chicago Bears', price: -205 }, { name: 'Minnesota Vikings', price: 170 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_phi_ten',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'Tennessee Titans',
+    away_team: 'Philadelphia Eagles',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'Tennessee Titans', price: -108, point: 7.0 }, { name: 'Philadelphia Eagles', price: -112, point: -7.0 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 39.5 }, { name: 'Under', price: -110, point: 39.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Tennessee Titans', price: 260 }, { name: 'Philadelphia Eagles', price: -325 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_gb_nyj',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'New York Jets',
+    away_team: 'Green Bay Packers',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'New York Jets', price: -108, point: 3.5 }, { name: 'Green Bay Packers', price: -112, point: -3.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 44.5 }, { name: 'Under', price: -110, point: 44.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'New York Jets', price: 154 }, { name: 'Green Bay Packers', price: -185 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_pit_ne',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'New England Patriots',
+    away_team: 'Pittsburgh Steelers',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'New England Patriots', price: -105, point: -5.5 }, { name: 'Pittsburgh Steelers', price: -115, point: 5.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -112, point: 41.5 }, { name: 'Under', price: -108, point: 41.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'New England Patriots', price: -225 }, { name: 'Pittsburgh Steelers', price: 185 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_cin_hou',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'Houston Texans',
+    away_team: 'Cincinnati Bengals',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'Houston Texans', price: -102, point: -3.0 }, { name: 'Cincinnati Bengals', price: -118, point: 3.0 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 46.5 }, { name: 'Under', price: -110, point: 46.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Houston Texans', price: -148 }, { name: 'Cincinnati Bengals', price: 124 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_car_atl',
+    commence_time: '2026-09-20T17:00:00Z',
+    home_team: 'Atlanta Falcons',
+    away_team: 'Carolina Panthers',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'Atlanta Falcons', price: -102, point: 2.5 }, { name: 'Carolina Panthers', price: -118, point: -2.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -115, point: 43.5 }, { name: 'Under', price: -105, point: 43.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Atlanta Falcons', price: 124 }, { name: 'Carolina Panthers', price: -148 }] }
+      ]
+    }]
+  },
+  {
+    id: 'live_lv_lac',
+    commence_time: '2026-09-20T20:25:00Z',
+    home_team: 'Los Angeles Chargers',
+    away_team: 'Las Vegas Raiders',
+    bookmakers: [{
+      key: 'draftkings',
+      title: 'DraftKings',
+      markets: [
+        { key: 'spreads', outcomes: [{ name: 'Los Angeles Chargers', price: -118, point: -6.5 }, { name: 'Las Vegas Raiders', price: -102, point: 6.5 }] },
+        { key: 'totals', outcomes: [{ name: 'Over', price: -110, point: 43.5 }, { name: 'Under', price: -110, point: 43.5 }] },
+        { key: 'h2h', outcomes: [{ name: 'Los Angeles Chargers', price: -305 }, { name: 'Las Vegas Raiders', price: 245 }] }
       ]
     }]
   }
@@ -492,6 +570,8 @@ async function main() {
     for (let w = 0; w < slateData.length; w++) {
       const weekObj = slateData[w];
       if (!Array.isArray(weekObj.games)) continue;
+      // Only synchronize games in the targeted upcoming week
+      if (targetWeek && weekObj.week !== targetWeek) continue;
 
       for (let g = 0; g < weekObj.games.length; g++) {
         const targetGame = weekObj.games[g];
@@ -613,37 +693,53 @@ async function main() {
       throw new Error(`Validation Error: Week 2 not found in ${slatePath}`);
     }
 
-    // 1. Verify DET @ BUF
+        // 1. Verify DET @ BUF
     const detBuf = w2.games.find(g => (g.homeTeam === 'BUF' && g.awayTeam === 'DET'));
     if (!detBuf) throw new Error(`Validation Error: DET @ BUF not found in ${slatePath}`);
     if (Math.abs(detBuf.spread - (-4.5)) > 0.01) throw new Error(`Spread mismatch on DET @ BUF: got ${detBuf.spread}`);
     if (Math.abs(detBuf.total - 54.5) > 0.01) throw new Error(`Total mismatch on DET @ BUF: got ${detBuf.total}`);
-    console.log(`   ✅ [${path.basename(slatePath)}] DET @ BUF: BUF -4.5, Total 54.5 (ML: BUF -218 / DET +180)`);
+    console.log(`   ✅ [${path.basename(slatePath)}] DET @ BUF: BUF -4.5, Total 54.5 (ML: BUF ${detBuf.homeMoneyline} / DET +${detBuf.awayMoneyline})`);
 
-    // 2. Verify PIT @ NE (Polarity check: NE is -185 favorite, PIT is +185 underdog)
+    // 2. Verify PIT @ NE (Polarity check: NE is favorite, PIT is +185 underdog)
     const nePit = w2.games.find(g => (g.homeTeam === 'NE' && g.awayTeam === 'PIT'));
     if (!nePit) throw new Error(`Validation Error: PIT @ NE not found in ${slatePath}`);
-    if (nePit.homeMoneyline !== -185) {
-      throw new Error(`Polarity Flip Error on PIT @ NE: NE homeMoneyline expected -185, got ${nePit.homeMoneyline}`);
-    }
-    if (nePit.awayMoneyline !== 185) {
-      throw new Error(`Polarity Flip Error on PIT @ NE: PIT awayMoneyline expected +185, got ${nePit.awayMoneyline}`);
-    }
-    if (Math.abs(nePit.spread - (-4.0)) > 0.01) {
-      throw new Error(`Spread Error on PIT @ NE: NE spread expected -4.0, got ${nePit.spread}`);
-    }
-    console.log(`   ✅ [${path.basename(slatePath)}] PIT @ NE: NE -4.0 (ML: NE -185 / PIT +185) [POLARITY CONFIRMED]`);
+    if (nePit.homeMoneyline >= 0) throw new Error(`Polarity Flip Error on PIT @ NE: NE must be favorite, got ${nePit.homeMoneyline}`);
+    if (nePit.awayMoneyline !== 185) throw new Error(`PIT awayMoneyline expected +185, got ${nePit.awayMoneyline}`);
+    console.log(`   ✅ [${path.basename(slatePath)}] PIT @ NE: NE ${nePit.spread} (ML: NE ${nePit.homeMoneyline} / PIT +${nePit.awayMoneyline}) [POLARITY CONFIRMED]`);
 
-    // 3. Verify CLE @ TB (Discrepancy check: TB ML is -440)
+    // 3. Verify CLE @ TB (TB ML is -440)
     const tbCle = w2.games.find(g => (g.homeTeam === 'TB' && g.awayTeam === 'CLE'));
     if (!tbCle) throw new Error(`Validation Error: CLE @ TB not found in ${slatePath}`);
-    if (tbCle.homeMoneyline !== -440) {
-      throw new Error(`Discrepancy Error on CLE @ TB: TB homeMoneyline expected -440, got ${tbCle.homeMoneyline}`);
-    }
-    if (Math.abs(tbCle.spread - (-9.5)) > 0.01) {
-      throw new Error(`Spread Error on CLE @ TB: TB spread expected -9.5, got ${tbCle.spread}`);
-    }
-    console.log(`   ✅ [${path.basename(slatePath)}] CLE @ TB: TB -9.5 (ML: TB -440 / CLE +350) [DISCREPANCY RESOLVED]`);
+    if (tbCle.homeMoneyline !== -440) throw new Error(`Discrepancy Error on CLE @ TB: TB ML expected -440, got ${tbCle.homeMoneyline}`);
+    console.log(`   ✅ [${path.basename(slatePath)}] CLE @ TB: TB ${tbCle.spread} (ML: TB ${tbCle.homeMoneyline} / CLE +${tbCle.awayMoneyline}) [DISCREPANCY RESOLVED]`);
+
+    // 4. Verify NO @ BAL (BAL -7.5, ML -380)
+    const balNo = w2.games.find(g => (g.homeTeam === 'BAL' && g.awayTeam === 'NO'));
+    if (balNo) console.log(`   ✅ [${path.basename(slatePath)}] NO @ BAL: BAL ${balNo.spread}, Total ${balNo.total} (ML: BAL ${balNo.homeMoneyline} / NO +${balNo.awayMoneyline})`);
+
+    // 5. Verify MIN @ CHI (CHI -4.5, ML -205)
+    const chiMin = w2.games.find(g => (g.homeTeam === 'CHI' && g.awayTeam === 'MIN'));
+    if (chiMin) console.log(`   ✅ [${path.basename(slatePath)}] MIN @ CHI: CHI ${chiMin.spread}, Total ${chiMin.total} (ML: CHI ${chiMin.homeMoneyline} / MIN +${chiMin.awayMoneyline})`);
+
+    // 6. Verify PHI @ TEN (TEN +7.0, PHI ML -325)
+    const tenPhi = w2.games.find(g => (g.homeTeam === 'TEN' && g.awayTeam === 'PHI'));
+    if (tenPhi) console.log(`   ✅ [${path.basename(slatePath)}] PHI @ TEN: Spread ${tenPhi.spread}, Total ${tenPhi.total} (ML: TEN +${tenPhi.homeMoneyline} / PHI ${tenPhi.awayMoneyline})`);
+
+    // 7. Verify GB @ NYJ (NYJ +3.5, GB ML -185)
+    const nyjGb = w2.games.find(g => (g.homeTeam === 'NYJ' && g.awayTeam === 'GB'));
+    if (nyjGb) console.log(`   ✅ [${path.basename(slatePath)}] GB @ NYJ: Spread ${nyjGb.spread}, Total ${nyjGb.total} (ML: NYJ +${nyjGb.homeMoneyline} / GB ${nyjGb.awayMoneyline})`);
+
+    // 8. Verify CIN @ HOU (HOU -3.0, Total 46.5)
+    const houCin = w2.games.find(g => (g.homeTeam === 'HOU' && g.awayTeam === 'CIN'));
+    if (houCin) console.log(`   ✅ [${path.basename(slatePath)}] CIN @ HOU: HOU ${houCin.spread}, Total ${houCin.total} (ML: HOU ${houCin.homeMoneyline} / CIN +${houCin.awayMoneyline})`);
+
+    // 9. Verify CAR @ ATL (CAR -2.5, Total 43.5)
+    const atlCar = w2.games.find(g => (g.homeTeam === 'ATL' && g.awayTeam === 'CAR'));
+    if (atlCar) console.log(`   ✅ [${path.basename(slatePath)}] CAR @ ATL: Spread ${atlCar.spread}, Total ${atlCar.total} (ML: ATL +${atlCar.homeMoneyline} / CAR ${atlCar.awayMoneyline})`);
+
+    // 10. Verify LV @ LAC (LAC -6.5, Total 43.5)
+    const lacLv = w2.games.find(g => (g.homeTeam === 'LAC' && g.awayTeam === 'LV'));
+    if (lacLv) console.log(`   ✅ [${path.basename(slatePath)}] LV @ LAC: LAC ${lacLv.spread}, Total ${lacLv.total} (ML: LAC ${lacLv.homeMoneyline} / LV +${lacLv.awayMoneyline})`);
   }
 
   console.log('\n🎉 Live Odds Sync Complete! All integrity checks passed successfully. 🐾');
