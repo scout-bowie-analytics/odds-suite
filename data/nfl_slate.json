@@ -465,17 +465,17 @@
         "awayTeam": "SEA",
         "homeTeamName": "Arizona Cardinals",
         "awayTeamName": "Seattle Seahawks",
-        "spread": -0.5,
+        "spread": 4.5,
         "total": 41.5,
-        "homeWinProb": 0.52,
-        "awayWinProb": 0.48,
+        "homeWinProb": 0.35,
+        "awayWinProb": 0.65,
         "homePickPct": 0.005,
         "awayPickPct": 0,
         "spreadOdds": -110,
         "totalOverOdds": -110,
         "totalUnderOdds": -110,
-        "homeMoneyline": -110,
-        "awayMoneyline": 110
+        "homeMoneyline": 175,
+        "awayMoneyline": -210
       },
       {
         "id": "w2_ten_phi",
@@ -573,17 +573,17 @@
         "awayTeam": "JAX",
         "homeTeamName": "Denver Broncos",
         "awayTeamName": "Jacksonville Jaguars",
-        "spread": -0.5,
-        "total": 41.5,
-        "homeWinProb": 0.52,
-        "awayWinProb": 0.48,
+        "spread": -2.5,
+        "total": 44.5,
+        "homeWinProb": 0.58,
+        "awayWinProb": 0.42,
         "homePickPct": 0.002,
         "awayPickPct": 0,
         "spreadOdds": -110,
         "totalOverOdds": -110,
         "totalUnderOdds": -110,
-        "homeMoneyline": -110,
-        "awayMoneyline": 110
+        "homeMoneyline": -140,
+        "awayMoneyline": 120
       }
     ]
   },
