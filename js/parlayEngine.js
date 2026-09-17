@@ -18,6 +18,15 @@ export class ParlayEngine {
   // ==========================================
 
   /**
+   * Helper to safely extract weeks array from either direct array or metadata envelope
+   */
+  getWeeks(slateData) {
+    if (Array.isArray(slateData)) return slateData;
+    if (slateData && Array.isArray(slateData.weeks)) return slateData.weeks;
+    return [];
+  }
+
+  /**
    * Convert American odds to Decimal multiplier
    * e.g., -110 -> 1.9091, +150 -> 2.5000, -500 -> 1.2000
    */
@@ -120,14 +129,13 @@ export class ParlayEngine {
   calculateNaiveFairProduct(slateData = []) {
     if (this.legs.length === 0) return 0;
 
+    const weeks = this.getWeeks(slateData);
     let product = 1.0;
     this.legs.forEach(leg => {
       let slateGame = null;
-      if (Array.isArray(slateData)) {
-        for (const weekObj of slateData) {
-          const found = (weekObj.games || []).find(g => g.id === leg.gameId);
-          if (found) { slateGame = found; break; }
-        }
+      for (const weekObj of weeks) {
+        const found = (weekObj.games || []).find(g => g.id === leg.gameId);
+        if (found) { slateGame = found; break; }
       }
       const fairP = this.getFairIndependentProb(leg, slateGame);
       product *= fairP;
@@ -467,10 +475,11 @@ export class ParlayEngine {
 
     // 1. Build Game Baseline Lookup for legs in slip
     const gameBaselines = {};
+    const weeks = this.getWeeks(slateData);
     this.legs.forEach(leg => {
       if (!gameBaselines[leg.gameId]) {
         let gameObj = null;
-        for (const weekObj of slateData) {
+        for (const weekObj of weeks) {
           const found = (weekObj.games || []).find(g => g.id === leg.gameId);
           if (found) { gameObj = found; break; }
         }
@@ -624,7 +633,8 @@ export class ParlayEngine {
     const strategy = options.strategy || 'best_value';
     const ticketCount = Math.max(1, Math.min(3, Number(options.ticketCount) || 1));
 
-    const weekData = (slateData || []).find(s => s.week === targetWeek);
+    const weeks = this.getWeeks(slateData);
+    const weekData = weeks.find(s => s.week === targetWeek);
     if (!weekData || !Array.isArray(weekData.games) || weekData.games.length === 0) {
       return [];
     }

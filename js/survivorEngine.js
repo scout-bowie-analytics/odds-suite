@@ -25,6 +25,15 @@ export class SurvivorEngine {
   }
 
   /**
+   * Helper to safely extract weeks array from either direct array or metadata envelope
+   */
+  getWeeks(slateData) {
+    if (Array.isArray(slateData)) return slateData;
+    if (slateData && Array.isArray(slateData.weeks)) return slateData.weeks;
+    return [];
+  }
+
+  /**
    * Expected Value (EV) calculation against pool size
    * Formula: EV = (pWin / max(0.01, pickShare)) * (1 - (1 - pWin)^poolSize)
    */
@@ -50,9 +59,10 @@ export class SurvivorEngine {
   calculateFutureValue(teamCode, fromWeek, slateData, targetHorizon = 18) {
     let fv = 0;
     const maxWeek = Math.min(18, Number(targetHorizon) || 18);
+    const weeks = this.getWeeks(slateData);
 
     for (let w = fromWeek + 1; w <= maxWeek; w++) {
-      const weekData = slateData.find(s => s.week === w);
+      const weekData = weeks.find(s => s.week === w);
       if (!weekData || (weekData.byes && weekData.byes.includes(teamCode))) continue;
 
       const game = weekData.games.find(g => g.homeTeam === teamCode || g.awayTeam === teamCode);
@@ -72,7 +82,8 @@ export class SurvivorEngine {
    * Helper to get a team's game details for a given week
    */
   getTeamGame(teamCode, week, slateData) {
-    const weekData = slateData.find(s => s.week === week);
+    const weeks = this.getWeeks(slateData);
+    const weekData = weeks.find(s => s.week === week);
     if (!weekData) return null;
     if (weekData.byes && weekData.byes.includes(teamCode)) {
       return { isBye: true, week, teamCode };
@@ -125,8 +136,9 @@ export class SurvivorEngine {
     let cumulativeSurvival = 1.0;
     let horizonSurvival = 1.0;
 
+    const weeks = this.getWeeks(slateData);
     for (let w = 1; w <= 18; w++) {
-      const weekData = slateData.find(s => s.week === w);
+      const weekData = weeks.find(s => s.week === w);
       if (!weekData) continue;
 
       // 1. Check if user manually locked a pick for this week
@@ -266,7 +278,8 @@ export class SurvivorEngine {
     const targetWeek = Number(week) || 1;
     const poolSize = Math.max(10, Number(options.poolSize) || 100);
     const targetHorizon = options.targetHorizon || 18;
-    const weekData = slateData.find(s => s.week === targetWeek);
+    const weeks = this.getWeeks(slateData);
+    const weekData = weeks.find(s => s.week === targetWeek);
     if (!weekData) return { leverage: null, chalk: null, trap: null, all: [] };
 
     const picks = [];
@@ -423,7 +436,8 @@ export class SurvivorEngine {
    */
   generatePickemConfidence(week, slateData, mode = 'straight_up') {
     const targetWeek = Number(week) || 1;
-    const weekData = slateData.find(s => s.week === targetWeek);
+    const weeks = this.getWeeks(slateData);
+    const weekData = weeks.find(s => s.week === targetWeek);
     if (!weekData || !weekData.games) return [];
 
     if (mode === 'ats') {

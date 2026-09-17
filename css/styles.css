@@ -316,6 +316,50 @@ body {
   border-color: var(--gold);
 }
 
+/* Live Odds Sync Status Indicator */
+.odds-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: #34d399;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.12);
+  user-select: none;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.odds-sync-indicator.partial {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.12);
+}
+
+.odds-sync-dot {
+  font-size: 10px;
+  color: #10b981;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+  animation: pulse-dot 2.5s infinite ease-in-out;
+}
+
+.odds-sync-indicator.partial .odds-sync-dot {
+  color: #f59e0b;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
 /* Survivor Dedicated Controls Grid */
 .survivor-controls-grid {
   display: grid;
