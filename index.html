@@ -252,7 +252,7 @@
 
     </div>
 
-    <!-- VIEW 2: PICK'EM CONFIDENCE MODE -->
+    <!-- VIEW 2: PICK'EM CONFIDENCE & ATS MODE -->
     <div id="pickemView" style="display:none;">
       
       <!-- Pickem Top Control Bar: Mode Toggle & Subtitle -->
@@ -268,7 +268,7 @@
             </div>
           </div>
 
-          <!-- SU vs ATS Mode Switcher & Copy Action -->
+          <!-- SU vs ATS Mode Switcher & Actions -->
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <div class="strategy-btn-group" id="pickemModeSelector">
               <button class="strategy-btn active" id="btnPickemSU" onclick="onPickemModeSelect('straight_up')" data-mode="straight_up">
@@ -278,19 +278,66 @@
                 <span>⚖️ Against the Spread (ATS)</span>
               </button>
             </div>
-            <button class="btn-secondary" onclick="copyPickemSheet()" title="Copy confidence picks to clipboard">
-              <span>📋 Copy Sheet</span>
+            <button class="btn-secondary" onclick="onPickemResetPicks()" title="Reset all picks to Scout Bowie model recommendations">
+              <span>🔄 Reset to Model</span>
+            </button>
+            <button class="btn-secondary" onclick="copyPickemSheet()" title="Copy pick sheet formatted for Sleeper, Yahoo, or ESPN">
+              <span>📋 Export / Copy Picks</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Pick'em Confidence Rankings Table -->
-      <div class="matrix-card">
+      <!-- Pick'em Options Toolbar: Format Toggle, Strategy Bias, and View Mode -->
+      <div class="pickem-toolbar">
+        <div class="pickem-control-cluster">
+          <span class="pickem-control-label">League Format:</span>
+          <div class="strategy-btn-group" id="pickemFormatSelector">
+            <button class="strategy-btn active" id="btnFormatConfidence" onclick="onPickemLeagueFormatSelect('confidence')" data-format="confidence">
+              <span>🔢 Confidence (1-16)</span>
+            </button>
+            <button class="strategy-btn" id="btnFormatStandard" onclick="onPickemLeagueFormatSelect('standard')" data-format="standard">
+              <span>🎯 Standard (1 pt)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="pickem-control-cluster">
+          <span class="pickem-control-label">Strategy Bias:</span>
+          <div class="strategy-btn-group" id="pickemBiasSelector">
+            <button class="strategy-btn active" id="btnBiasContrarian" onclick="onPickemStrategyBiasSelect('contrarian')" data-bias="contrarian" title="Prioritize positive leverage dogs to win large pools">
+              <span>⚡ Contrarian Leverage</span>
+            </button>
+            <button class="strategy-btn" id="btnBiasMaxEV" onclick="onPickemStrategyBiasSelect('max_ev')" data-bias="max_ev" title="Strictly pick highest cover probability to minimize variance">
+              <span>📈 Max Expected Value</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="pickem-control-cluster">
+          <span class="pickem-control-label">Display Mode:</span>
+          <div class="strategy-btn-group" id="pickemViewModeSelector">
+            <button class="strategy-btn active" id="btnViewCards" onclick="onPickemViewModeSelect('cards')" data-view="cards">
+              <span>🎴 Matchup Cards</span>
+            </button>
+            <button class="strategy-btn" id="btnViewTable" onclick="onPickemViewModeSelect('table')" data-view="table">
+              <span>📋 Compact Table</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Matchup Cards Grid -->
+      <div id="pickemCardsContainer" class="pickem-cards-grid">
+        <!-- Dynamically populated by app.js -->
+      </div>
+
+      <!-- Pick'em Compact Table (Optional Alternative View) -->
+      <div id="pickemTableCard" class="matrix-card" style="display:none;margin-bottom:24px;">
         <div class="matrix-header-row">
           <div>
             <div class="matrix-title" id="pickemTableTitle">
-              <span>📋 Week 1 Pick'em Confidence Table (16 down to 1)</span>
+              <span>📋 Week 1 Pick'em Table</span>
             </div>
             <div style="font-size:11.5px;color:var(--muted);margin-top:2px;" id="pickemTableSubtitle">
               Higher point values assigned to safest favorites. Leverage plays highlight where the public is underweight.
