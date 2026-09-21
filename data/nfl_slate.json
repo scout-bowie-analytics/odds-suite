@@ -1,5 +1,5 @@
 {
-  "lastSyncedAt": "2026-09-17T15:22:53.958Z",
+  "lastSyncedAt": "2026-09-21T20:35:23.163Z",
   "syncStatus": "COMPLETE",
   "totalGames": 272,
   "syncedGames": 272,
@@ -593,7 +593,7 @@
           "awayMoneyline": 120
         }
       ],
-      "lastSyncedAt": "2026-09-17T15:22:53.958Z",
+      "lastSyncedAt": "2026-09-21T19:32:27.554Z",
       "syncStatus": "COMPLETE"
     },
     {
@@ -876,20 +876,20 @@
           "awayTeam": "SEA",
           "homeTeamName": "Washington Commanders",
           "awayTeamName": "Seattle Seahawks",
-          "spread": -1,
-          "total": 41.5,
-          "homeWinProb": 0.51,
-          "awayWinProb": 0.49,
+          "spread": -1.5,
+          "total": 42.5,
+          "homeWinProb": 0.53,
+          "awayWinProb": 0.47,
           "homePickPct": 0.005,
           "awayPickPct": 0,
           "spreadOdds": -110,
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
-          "homeMoneyline": -115,
-          "awayMoneyline": 95
+          "homeMoneyline": -125,
+          "awayMoneyline": 105
         }
       ],
-      "lastSyncedAt": "2026-09-17T14:28:39.022Z",
+      "lastSyncedAt": "2026-09-21T20:35:23.163Z",
       "syncStatus": "COMPLETE"
     },
     {
