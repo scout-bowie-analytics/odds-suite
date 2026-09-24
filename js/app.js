@@ -681,20 +681,22 @@ class OddsSuiteApp {
       }
     }
 
+    const providerName = metadata.provider || 'DraftKings (ESPN Open Feed)';
+
     if (isStale) {
       indicator.className = 'odds-sync-indicator stale';
       indicator.innerHTML = `
         <span class="odds-sync-dot">⚠️</span>
         <span id="oddsSyncText">⚠️ Odds Stale (Synced >24h ago)</span>
       `;
-      indicator.title = `Warning: Odds data was synced ${Math.round(ageHours)} hours ago during an active game window. Consensus lines and injury news may have moved! (Last synced: ${metadata.lastSyncedAt})`;
+      indicator.title = `Warning: Odds data from ${providerName} was synced ${Math.round(ageHours)} hours ago during an active game window. Consensus lines and injury news may have moved! (Last synced: ${metadata.lastSyncedAt})`;
     } else {
       indicator.className = `odds-sync-indicator ${isComplete ? 'complete' : 'partial'}`;
       indicator.innerHTML = `
         <span class="odds-sync-dot">●</span>
         <span id="oddsSyncText">Odds Synced: ${gameCount}/${gameCount} Games (${timeDisplay})</span>
       `;
-      indicator.title = `Live Odds Consensus: ${isComplete ? '100% Complete' : 'Partial'} (Last synced: ${metadata.lastSyncedAt || 'Live'})`;
+      indicator.title = `Live Odds: ${providerName} • ${isComplete ? '100% Complete' : 'Partial'} (Last synced: ${metadata.lastSyncedAt || 'Live'})`;
     }
   }
 
