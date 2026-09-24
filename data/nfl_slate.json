@@ -1,5 +1,5 @@
 {
-  "lastSyncedAt": "2026-09-24T20:07:28.456Z",
+  "lastSyncedAt": "2026-09-24T20:12:38.539Z",
   "syncStatus": "COMPLETE",
   "totalGames": 272,
   "syncedGames": 272,
@@ -616,7 +616,9 @@
           "totalOverOdds": -112,
           "totalUnderOdds": -108,
           "homeMoneyline": -290,
-          "awayMoneyline": 235
+          "awayMoneyline": 235,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_tb_min",
@@ -634,7 +636,9 @@
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
           "homeMoneyline": 102,
-          "awayMoneyline": -122
+          "awayMoneyline": -122,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_no_lv",
@@ -652,7 +656,9 @@
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
           "homeMoneyline": -185,
-          "awayMoneyline": 154
+          "awayMoneyline": 154,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_den_lar",
@@ -670,7 +676,9 @@
           "totalOverOdds": -115,
           "totalUnderOdds": -105,
           "homeMoneyline": 114,
-          "awayMoneyline": -135
+          "awayMoneyline": -135,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_buf_lac",
@@ -688,7 +696,9 @@
           "totalOverOdds": -105,
           "totalUnderOdds": -115,
           "homeMoneyline": -345,
-          "awayMoneyline": 275
+          "awayMoneyline": 275,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_gb_atl",
@@ -706,7 +716,9 @@
           "totalOverOdds": -118,
           "totalUnderOdds": -102,
           "homeMoneyline": -245,
-          "awayMoneyline": 200
+          "awayMoneyline": 200,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_ind_hou",
@@ -724,7 +736,9 @@
           "totalOverOdds": -112,
           "totalUnderOdds": -108,
           "homeMoneyline": 105,
-          "awayMoneyline": -125
+          "awayMoneyline": -125,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_dal_bal",
@@ -742,7 +756,9 @@
           "totalOverOdds": -112,
           "totalUnderOdds": -108,
           "homeMoneyline": 145,
-          "awayMoneyline": -175
+          "awayMoneyline": -175,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_sf_ari",
@@ -760,7 +776,9 @@
           "totalOverOdds": -115,
           "totalUnderOdds": -105,
           "homeMoneyline": -455,
-          "awayMoneyline": 350
+          "awayMoneyline": 350,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_mia_kc",
@@ -778,7 +796,9 @@
           "totalOverOdds": -115,
           "totalUnderOdds": -105,
           "homeMoneyline": 470,
-          "awayMoneyline": -650
+          "awayMoneyline": -650,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_chi_phi",
@@ -796,7 +816,9 @@
           "totalOverOdds": -105,
           "totalUnderOdds": -115,
           "homeMoneyline": 185,
-          "awayMoneyline": -225
+          "awayMoneyline": -225,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_pit_cin",
@@ -814,7 +836,9 @@
           "totalOverOdds": -110,
           "totalUnderOdds": -110,
           "homeMoneyline": 154,
-          "awayMoneyline": -185
+          "awayMoneyline": -185,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_cle_car",
@@ -832,7 +856,9 @@
           "totalOverOdds": -108,
           "totalUnderOdds": -112,
           "homeMoneyline": 124,
-          "awayMoneyline": -148
+          "awayMoneyline": -148,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_nyg_ten",
@@ -850,7 +876,9 @@
           "totalOverOdds": -108,
           "totalUnderOdds": -112,
           "homeMoneyline": -130,
-          "awayMoneyline": 110
+          "awayMoneyline": 110,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_jax_ne",
@@ -868,7 +896,9 @@
           "totalOverOdds": -115,
           "totalUnderOdds": -105,
           "homeMoneyline": -155,
-          "awayMoneyline": 130
+          "awayMoneyline": 130,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         },
         {
           "id": "w3_was_sea",
@@ -878,19 +908,22 @@
           "awayTeamName": "Seattle Seahawks",
           "spread": 7.5,
           "total": 40.5,
-          "homeWinProb": 0.26,
-          "awayWinProb": 0.74,
+          "homeWinProb": 0.24,
+          "awayWinProb": 0.76,
           "homePickPct": 0.005,
           "awayPickPct": 0,
-          "spreadOdds": -115,
+          "spreadOdds": -112,
           "totalOverOdds": -102,
           "totalUnderOdds": -118,
-          "homeMoneyline": 275,
-          "awayMoneyline": -345
+          "homeMoneyline": 295,
+          "awayMoneyline": -375,
+          "oddsStatus": "ACTIVE",
+          "isOffTheBoard": false
         }
       ],
-      "lastSyncedAt": "2026-09-24T20:07:28.456Z",
-      "syncStatus": "COMPLETE"
+      "lastSyncedAt": "2026-09-24T20:12:38.539Z",
+      "syncStatus": "COMPLETE",
+      "offTheBoardCount": 0
     },
     {
       "week": 4,
@@ -5086,5 +5119,6 @@
       "syncStatus": "COMPLETE"
     }
   ],
-  "provider": "DraftKings (ESPN Open Feed)"
+  "provider": "DraftKings (ESPN Open Feed)",
+  "targetWeek": 3
 }

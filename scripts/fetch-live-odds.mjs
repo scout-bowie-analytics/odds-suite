@@ -1,10 +1,14 @@
 /**
- * 🐾 SCOUT BOWIE NFL LIVE ODDS SYNC PIPELINE
- * Fetches real-time DraftKings consensus lines directly from ESPN's Open Scoreboard API,
- * normalizes team names, updates point spreads, totals, moneylines, and unvigged win probabilities,
- * strictly enforces home/away polarity without index assumptions,
- * gates completeness against scheduled matchups, runs sanity assertions,
- * and synchronizes data/nfl_slate.json and odds-suite/data/nfl_slate.json with metadata.
+ * 🐾 SCOUT BOWIE NFL LIVE ODDS SYNC PIPELINE (HARDENED)
+ * 
+ * Features:
+ * 1. CLI Week Auto-Detection: Dynamically calculates active NFL week via Tuesday 06:00 UTC rollover.
+ * 2. Real DraftKings Consensus via ESPN Open API: Direct scoreboard fetch without API keys or rate limits.
+ * 3. Browser Request Headers: Standard Chrome User-Agent preventing CDN blocks in CI/GitHub Actions.
+ * 4. Complete 32-Team Mapping: Full normalization dictionary supporting all ESPN codes (WSH, JAC, GBP, etc.).
+ * 5. Off-The-Board (OTB) Graceful Handling: Retains existing lines and tags unlisted injury games (when >=14 games active).
+ * 6. Strict Sanity & Completeness: Polarity checks, 2.0% - 10.0% hold assertion, zero placeholders.
+ * 7. Dual-File Sync: Commits identical metadata and lines to data/nfl_slate.json and odds-suite/data/nfl_slate.json.
  */
 
 import fs from 'fs';
@@ -14,15 +18,24 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 1. CLI Arguments & Active Week Configuration
+// 1. Dynamic Week Auto-Detection (Tuesday 06:00 UTC Rollover)
+export function getCurrentNFLWeek(now = Date.now()) {
+  const W2_START = Date.UTC(2026, 8, 15, 6, 0, 0); // Tue Sep 15 2026 06:00 UTC
+  const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+  const diffMs = (typeof now === 'number' ? now : new Date(now).getTime()) - W2_START;
+  if (diffMs < 0) return 1;
+  const week = 2 + Math.floor(diffMs / MS_PER_WEEK);
+  return Math.max(1, Math.min(18, week));
+}
+
+const targetWeekArg = process.argv.find(arg => arg.startsWith('--week='))?.split('=')[1];
+const targetWeek = targetWeekArg ? parseInt(targetWeekArg, 10) : getCurrentNFLWeek();
+
 const apiKey = process.env.ODDS_API_KEY || 
   process.argv.find(arg => arg.startsWith('--apiKey='))?.split('=')[1] ||
   (process.argv[2] && !process.argv[2].startsWith('-') ? process.argv[2] : null);
 
-const targetWeekArg = process.argv.find(arg => arg.startsWith('--week='))?.split('=')[1];
-const targetWeek = targetWeekArg ? parseInt(targetWeekArg, 10) : 3; // Active upcoming slate week (Week 3)
-
-// 2. Comprehensive Team Name Normalization Dictionary
+// 2. Comprehensive 32-Team Normalization Dictionary (Full Names, Nicknames, Cities, ESPN Alternates)
 const TEAM_NAME_TO_CODE = {
   // Full Names
   'Arizona Cardinals': 'ARI',
@@ -58,7 +71,7 @@ const TEAM_NAME_TO_CODE = {
   'Tennessee Titans': 'TEN',
   'Washington Commanders': 'WAS',
 
-  // Historical / Alternate names
+  // Historical / Alternate Franchise Names
   'Washington Football Team': 'WAS',
   'Washington Redskins': 'WAS',
   'Oakland Raiders': 'LV',
@@ -133,16 +146,27 @@ const TEAM_NAME_TO_CODE = {
   'Tennessee': 'TEN',
   'Washington': 'WAS',
 
-  // Team Codes self-mapping
+  // Team Codes, Abbreviations & ESPN Alternates Self-Mapping
   'ARI': 'ARI', 'ATL': 'ATL', 'BAL': 'BAL', 'BUF': 'BUF',
   'CAR': 'CAR', 'CHI': 'CHI', 'CIN': 'CIN', 'CLE': 'CLE',
-  'DAL': 'DAL', 'DEN': 'DEN', 'DET': 'DET', 'GB': 'GB',
-  'HOU': 'HOU', 'IND': 'IND', 'JAX': 'JAX', 'KC': 'KC',
-  'LV': 'LV',   'LAC': 'LAC', 'LAR': 'LAR', 'MIA': 'MIA',
-  'MIN': 'MIN', 'NE': 'NE',   'NO': 'NO',   'NYG': 'NYG',
-  'NYJ': 'NYJ', 'PHI': 'PHI', 'PIT': 'PIT', 'SF': 'SF',
-  'SEA': 'SEA', 'TB': 'TB',   'TEN': 'TEN', 'WAS': 'WAS',
-  'WSH': 'WAS'
+  'DAL': 'DAL', 'DEN': 'DEN', 'DET': 'DET',
+  'GB': 'GB',   'GBP': 'GB',
+  'HOU': 'HOU', 'IND': 'IND',
+  'JAX': 'JAX', 'JAC': 'JAX',
+  'KC': 'KC',   'KCC': 'KC',
+  'LV': 'LV',   'LVR': 'LV',  'OAK': 'LV',
+  'LAC': 'LAC', 'SD': 'LAC',
+  'LAR': 'LAR', 'LA': 'LAR',  'RAM': 'LAR', 'STL': 'LAR',
+  'MIA': 'MIA', 'MIN': 'MIN',
+  'NE': 'NE',   'NEP': 'NE',
+  'NO': 'NO',   'NOS': 'NO',
+  'NYG': 'NYG', 'NYJ': 'NYJ',
+  'PHI': 'PHI', 'PIT': 'PIT',
+  'SF': 'SF',   'SFO': 'SF',
+  'SEA': 'SEA',
+  'TB': 'TB',   'TBB': 'TB',
+  'TEN': 'TEN',
+  'WAS': 'WAS', 'WSH': 'WAS', 'WFT': 'WAS'
 };
 
 export function normalizeTeamCode(name) {
@@ -233,7 +257,7 @@ export function assertGameSanity(game, weekNum) {
   return true;
 }
 
-// 3. Locate Target nfl_slate.json Files
+// 3. Dual-File Target Resolver (Guarantees both root and odds-suite/ slate files exist and match)
 export function findSlateFilePaths() {
   const rootData = path.resolve(process.cwd(), 'data/nfl_slate.json');
   const dirnameData = path.resolve(__dirname, '../data/nfl_slate.json');
@@ -244,22 +268,31 @@ export function findSlateFilePaths() {
   const uniquePaths = Array.from(new Set(candidates));
   
   const existing = uniquePaths.filter(p => fs.existsSync(p));
-  if (!existing.includes(rootData)) {
-    existing.unshift(rootData);
+  if (!existing.includes(rootData)) existing.unshift(rootData);
+  if (!existing.includes(oddsSuiteData) && fs.existsSync(path.dirname(oddsSuiteData))) {
+    existing.push(oddsSuiteData);
   }
   return existing;
 }
 
 /**
  * 4. Primary Live Odds Provider: Ingest Live DraftKings Consensus from ESPN Open Scoreboard API
- * Zero-cost, zero-token, open public endpoint returning official DraftKings consensus lines.
+ * Includes browser request headers to prevent CDN/Cloudflare rate-limits on GitHub Actions runners.
  */
 export async function fetchEspnLiveOdds(weekNum) {
   const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=2026&seasontype=2&week=${weekNum}`;
   console.log(`\n🌐 Requesting live DraftKings consensus from ESPN Open Scoreboard API (Week ${weekNum})...`);
   console.log(`   ➔ URL: ${url}`);
 
-  const res = await fetch(url);
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache'
+  };
+
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     throw new Error(`ESPN Scoreboard API returned HTTP ${res.status}: ${res.statusText}`);
   }
@@ -270,6 +303,8 @@ export async function fetchEspnLiveOdds(weekNum) {
   }
 
   const liveMatchups = [];
+  const offTheBoardMatchups = [];
+
   for (const ev of data.events) {
     const comp = ev.competitions?.[0];
     if (!comp) continue;
@@ -286,25 +321,26 @@ export async function fetchEspnLiveOdds(weekNum) {
     }
 
     const oddsObj = comp.odds?.[0];
-    if (!oddsObj) {
-      throw new Error(`Missing live odds object for matchup ${awayCode} @ ${homeCode} in ESPN feed. Failing closed.`);
+    const isUnlisted = !oddsObj || typeof oddsObj.spread !== 'number' || oddsObj.overUnder === undefined;
+
+    if (isUnlisted) {
+      offTheBoardMatchups.push({
+        homeCode,
+        awayCode,
+        reason: !oddsObj ? 'No odds object listed on ESPN' : 'Missing spread or total line'
+      });
+      continue;
     }
 
     // Spread: in ESPN API, odds.spread is home spread (e.g. -4.5 for GB home fav, 7.5 for WSH home dog)
-    const homeSpread = (typeof oddsObj.spread === 'number') ? oddsObj.spread : null;
-    if (homeSpread === null) {
-      throw new Error(`Invalid spread for matchup ${awayCode} @ ${homeCode} in ESPN feed. Failing closed.`);
-    }
+    const homeSpread = oddsObj.spread;
 
     // Spread Odds (Juice)
     const homeSpreadOdds = oddsObj.pointSpread?.home?.close?.odds ? parseInt(oddsObj.pointSpread.home.close.odds, 10) : -110;
     const awaySpreadOdds = oddsObj.pointSpread?.away?.close?.odds ? parseInt(oddsObj.pointSpread.away.close.odds, 10) : -110;
 
     // Total
-    const total = oddsObj.overUnder !== undefined ? Number(oddsObj.overUnder) : null;
-    if (total === null || isNaN(total)) {
-      throw new Error(`Invalid total line for matchup ${awayCode} @ ${homeCode} in ESPN feed. Failing closed.`);
-    }
+    const total = Number(oddsObj.overUnder);
     const totalOverOdds = oddsObj.total?.over?.close?.odds ? parseInt(oddsObj.total.over.close.odds, 10) : -110;
     const totalUnderOdds = oddsObj.total?.under?.close?.odds ? parseInt(oddsObj.total.under.close.odds, 10) : -110;
 
@@ -320,7 +356,12 @@ export async function fetchEspnLiveOdds(weekNum) {
     }
 
     if (homeMoneyline === null || awayMoneyline === null || isNaN(homeMoneyline) || isNaN(awayMoneyline)) {
-      throw new Error(`Invalid moneyline for matchup ${awayCode} @ ${homeCode} in ESPN feed. Failing closed.`);
+      offTheBoardMatchups.push({
+        homeCode,
+        awayCode,
+        reason: 'Missing moneyline quotes'
+      });
+      continue;
     }
 
     liveMatchups.push({
@@ -335,12 +376,18 @@ export async function fetchEspnLiveOdds(weekNum) {
       totalUnderOdds,
       homeMoneyline,
       awayMoneyline,
+      isOffTheBoard: false,
       bookmaker: oddsObj.provider?.displayName || 'DraftKings'
     });
   }
 
-  console.log(`✅ Successfully fetched and parsed ${liveMatchups.length} live matchups from ESPN DraftKings feed.`);
-  return liveMatchups;
+  console.log(`✅ Successfully fetched and parsed ${liveMatchups.length} active live matchups from ESPN DraftKings feed.`);
+  if (offTheBoardMatchups.length > 0) {
+    console.warn(`⚠️ Notice: ${offTheBoardMatchups.length} matchup(s) unlisted or Off-The-Board (OTB) on ESPN:`);
+    offTheBoardMatchups.forEach(otb => console.warn(`   ➔ ${otb.awayCode} @ ${otb.homeCode} (${otb.reason})`));
+  }
+
+  return { liveMatchups, offTheBoardMatchups };
 }
 
 // 5. Optional Secondary Provider: The Odds API v4 (if API key explicitly supplied)
@@ -424,9 +471,10 @@ export function extractBestMarketData(game) {
 }
 
 async function main() {
-  console.log('⚡ SCOUT BOWIE LIVE ODDS SYNC ⚡\n');
-  const slatePaths = findSlateFilePaths();
+  console.log('⚡ SCOUT BOWIE LIVE ODDS SYNC (HARDENED) ⚡\n');
+  console.log(`🎯 Active target slate week: Week ${targetWeek}${targetWeekArg ? ' (via CLI --week)' : ' (Auto-detected via Tuesday rollover)'}`);
 
+  const slatePaths = findSlateFilePaths();
   if (slatePaths.length === 0) {
     console.error('❌ Error: Could not locate data/nfl_slate.json.');
     process.exit(1);
@@ -438,9 +486,10 @@ async function main() {
   const apiLookup = new Map();
   let parsedGamesCount = 0;
   let activeProvider = 'DraftKings (ESPN Open Feed)';
+  let reportedOtbList = [];
 
   if (apiKey) {
-    // Optional: User-supplied The Odds API key
+    // Secondary Provider: The Odds API v4 (if explicitly requested)
     const apiUrl = `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
     console.log('\n🌐 Requesting live NFL lines from The Odds API v4 (Secondary Provider)...');
 
@@ -475,8 +524,9 @@ async function main() {
   } else {
     // Primary Provider: ESPN Scoreboard API (Zero-cost, open DraftKings live consensus)
     try {
-      const espnMatchups = await fetchEspnLiveOdds(targetWeek);
-      espnMatchups.forEach(m => {
+      const { liveMatchups, offTheBoardMatchups } = await fetchEspnLiveOdds(targetWeek);
+      reportedOtbList = offTheBoardMatchups;
+      liveMatchups.forEach(m => {
         const key = `${m.homeCode}_${m.awayCode}`;
         apiLookup.set(key, m);
         parsedGamesCount++;
@@ -488,42 +538,32 @@ async function main() {
     }
   }
 
-  if (parsedGamesCount === 0) {
-    console.error('❌ Zero live games parsed from provider. Failing closed.');
-    process.exit(1);
-  }
-
-  console.log(`🎯 Normalized ${parsedGamesCount} live matchups ready for slate merging.\n`);
-
-  // 6. Completeness Gate: Validate all scheduled games in target week exist in live feed
+  // 6. Completeness & OTB Threshold Gate
+  // Rule: If >=14 games have live lines, handle 1-2 unlisted games gracefully (retain existing line + tag OTB)
   const primarySlatePath = slatePaths[0];
   const primaryRaw = JSON.parse(fs.readFileSync(primarySlatePath, 'utf8'));
   const primaryWeeks = Array.isArray(primaryRaw) ? primaryRaw : (primaryRaw.weeks || []);
   const targetWeekObj = primaryWeeks.find(w => w.week === targetWeek);
 
-  if (targetWeekObj && Array.isArray(targetWeekObj.games)) {
-    const scheduledGames = targetWeekObj.games;
-    const missingGames = [];
+  const scheduledGames = targetWeekObj && Array.isArray(targetWeekObj.games) ? targetWeekObj.games : [];
+  const minActiveGamesRequired = Math.min(14, Math.max(1, scheduledGames.length - 2));
 
-    scheduledGames.forEach(sg => {
-      const homeCode = sg.homeTeam;
-      const awayCode = sg.awayTeam;
-      const isPresent = apiLookup.has(`${homeCode}_${awayCode}`) || apiLookup.has(`${awayCode}_${homeCode}`);
-      if (!isPresent) {
-        missingGames.push(sg);
-      }
-    });
+  if (parsedGamesCount < minActiveGamesRequired) {
+    console.error(`\n❌ Ingestion Failure: Only ${parsedGamesCount} active live games found for Week ${targetWeek} (minimum threshold: ${minActiveGamesRequired}). Failing closed.`);
+    process.exit(1);
+  }
 
-    if (missingGames.length > 0) {
-      console.error(`\n❌ Completeness Gate Failure: ${missingGames.length} of ${scheduledGames.length} scheduled games missing from live feed for Week ${targetWeek}:`);
-      missingGames.forEach(mg => {
-        console.error(`   ➔ Missing: ${mg.awayTeam} @ ${mg.homeTeam} (ID: ${mg.id})`);
-      });
-      console.error('\n⛔ Aborting sync pipeline: Never commit partial slate data.');
-      process.exit(1);
-    } else {
-      console.log(`✅ Completeness Gate Passed: All ${scheduledGames.length}/${scheduledGames.length} scheduled matchups present for Week ${targetWeek}.\n`);
-    }
+  const missingGames = [];
+  scheduledGames.forEach(sg => {
+    const isPresent = apiLookup.has(`${sg.homeTeam}_${sg.awayTeam}`) || apiLookup.has(`${sg.awayTeam}_${sg.homeTeam}`);
+    if (!isPresent) missingGames.push(sg);
+  });
+
+  if (missingGames.length > 0) {
+    console.warn(`\n⚠️ Notice: ${missingGames.length} matchup(s) unlisted on live feed. Gracefully retaining existing lines with OFF_THE_BOARD tag:`);
+    missingGames.forEach(mg => console.warn(`   ➔ Retained: ${mg.awayTeam} @ ${mg.homeTeam} (ID: ${mg.id})`));
+  } else {
+    console.log(`✅ Completeness Gate Passed: All ${scheduledGames.length}/${scheduledGames.length} scheduled matchups active in live feed for Week ${targetWeek}.\n`);
   }
 
   // 7. Update Slate Files In Place, Run Sanity Checks, and Save with Metadata
@@ -556,96 +596,106 @@ async function main() {
         const oldHomeMl = targetGame.homeMoneyline;
         const oldAwayMl = targetGame.awayMoneyline;
 
-        // Check all parsed API matchups
+        // Find match in live feed
+        let matchedLive = null;
         for (const [key, live] of apiLookup.entries()) {
-          const apiHome = live.homeCode;
-          const apiAway = live.awayCode;
-
-          // Exact Two-Way Match
-          const isMatch = (targetGame.homeTeam === apiHome && targetGame.awayTeam === apiAway) || 
-                          (targetGame.homeTeam === apiAway && targetGame.awayTeam === apiHome);
-
-          if (!isMatch) continue;
-
-          const isInverted = (targetGame.homeTeam === apiAway && targetGame.awayTeam === apiHome);
-          let modified = false;
-
-          // Spread
-          if (live.spread !== null && live.spread !== undefined) {
-            const newSpread = isInverted ? -Number(live.spread) : Number(live.spread);
-            if (targetGame.spread !== newSpread || targetGame.spreadOdds !== (Number(live.spreadOdds) || -110)) {
-              targetGame.spread = newSpread;
-              targetGame.spreadOdds = Number(live.spreadOdds) || -110;
-              modified = true;
-            }
+          const isMatch = (targetGame.homeTeam === live.homeCode && targetGame.awayTeam === live.awayCode) || 
+                          (targetGame.homeTeam === live.awayCode && targetGame.awayTeam === live.homeCode);
+          if (isMatch) {
+            matchedLive = live;
+            break;
           }
+        }
 
-          // Total
-          if (live.total !== null && live.total !== undefined) {
-            if (targetGame.total !== Number(live.total)) {
-              targetGame.total = Number(live.total);
-              targetGame.totalOverOdds = Number(live.totalOverOdds) || -110;
-              targetGame.totalUnderOdds = Number(live.totalUnderOdds) || -110;
-              modified = true;
-            }
-          }
-
-          // Moneylines & Win Probabilities
-          if (live.homeMoneyline !== null && live.awayMoneyline !== null && live.homeMoneyline !== undefined && live.awayMoneyline !== undefined) {
-            const newHomeMl = isInverted ? Number(live.awayMoneyline) : Number(live.homeMoneyline);
-            const newAwayMl = isInverted ? Number(live.homeMoneyline) : Number(live.awayMoneyline);
-
-            if (targetGame.homeMoneyline !== newHomeMl || targetGame.awayMoneyline !== newAwayMl) {
-              targetGame.homeMoneyline = newHomeMl;
-              targetGame.awayMoneyline = newAwayMl;
-
-              const hImp = americanToImplied(targetGame.homeMoneyline);
-              const aImp = americanToImplied(targetGame.awayMoneyline);
-              const sumImp = hImp + aImp;
-
-              if (sumImp > 0) {
-                targetGame.homeWinProb = Number((hImp / sumImp).toFixed(2));
-                targetGame.awayWinProb = Number((1 - targetGame.homeWinProb).toFixed(2));
-              }
-              modified = true;
-            }
-          }
-
-          // Run sanity check on updated game
+        if (!matchedLive) {
+          // Off-The-Board Game: Retain line, tag as OFF_THE_BOARD
+          targetGame.oddsStatus = 'OFF_THE_BOARD';
+          targetGame.isOffTheBoard = true;
           assertGameSanity(targetGame, weekObj.week);
+          continue;
+        }
 
-          if (modified) {
-            gamesUpdated++;
-            slateFileUpdatedCount++;
-            
-            const existingSummary = updatedSummaryList.find(s => s.Week === `Week ${weekObj.week}` && s.Matchup === `${targetGame.awayTeam} @ ${targetGame.homeTeam}`);
-            if (!existingSummary) {
-              const formatMl = (ml) => ml > 0 ? `+${ml}` : `${ml}`;
-              const formatSpread = (sp) => sp > 0 ? `+${sp}` : `${sp}`;
+        // Active Game: Update lines and tag as ACTIVE
+        targetGame.oddsStatus = 'ACTIVE';
+        targetGame.isOffTheBoard = false;
 
-              updatedSummaryList.push({
-                'Week': `Week ${weekObj.week}`,
-                'Matchup': `${targetGame.awayTeam} @ ${targetGame.homeTeam}`,
-                'Old Spread': oldSpread !== null && oldSpread !== undefined ? formatSpread(oldSpread) : 'N/A',
-                'New Spread': formatSpread(targetGame.spread),
-                'Old Total': oldTotal ?? 'N/A',
-                'New Total': targetGame.total,
-                'Home ML': `${targetGame.homeTeam} ${formatMl(targetGame.homeMoneyline)}`,
-                'Away ML': `${targetGame.awayTeam} ${formatMl(targetGame.awayMoneyline)}`,
-                'Bookmaker': live.bookmaker || 'DraftKings'
-              });
-            }
+        const isInverted = (targetGame.homeTeam === matchedLive.awayCode && targetGame.awayTeam === matchedLive.homeCode);
+        let modified = false;
+
+        // Spread
+        if (matchedLive.spread !== null && matchedLive.spread !== undefined) {
+          const newSpread = isInverted ? -Number(matchedLive.spread) : Number(matchedLive.spread);
+          if (targetGame.spread !== newSpread || targetGame.spreadOdds !== (Number(matchedLive.spreadOdds) || -110)) {
+            targetGame.spread = newSpread;
+            targetGame.spreadOdds = Number(matchedLive.spreadOdds) || -110;
+            modified = true;
           }
+        }
 
-          break;
+        // Total
+        if (matchedLive.total !== null && matchedLive.total !== undefined) {
+          if (targetGame.total !== Number(matchedLive.total)) {
+            targetGame.total = Number(matchedLive.total);
+            targetGame.totalOverOdds = Number(matchedLive.totalOverOdds) || -110;
+            targetGame.totalUnderOdds = Number(matchedLive.totalUnderOdds) || -110;
+            modified = true;
+          }
+        }
+
+        // Moneylines & Win Probabilities
+        if (matchedLive.homeMoneyline !== null && matchedLive.awayMoneyline !== null && matchedLive.homeMoneyline !== undefined && matchedLive.awayMoneyline !== undefined) {
+          const newHomeMl = isInverted ? Number(matchedLive.awayMoneyline) : Number(matchedLive.homeMoneyline);
+          const newAwayMl = isInverted ? Number(matchedLive.homeMoneyline) : Number(matchedLive.awayMoneyline);
+
+          if (targetGame.homeMoneyline !== newHomeMl || targetGame.awayMoneyline !== newAwayMl) {
+            targetGame.homeMoneyline = newHomeMl;
+            targetGame.awayMoneyline = newAwayMl;
+
+            const hImp = americanToImplied(targetGame.homeMoneyline);
+            const aImp = americanToImplied(targetGame.awayMoneyline);
+            const sumImp = hImp + aImp;
+
+            if (sumImp > 0) {
+              targetGame.homeWinProb = Number((hImp / sumImp).toFixed(2));
+              targetGame.awayWinProb = Number((1 - targetGame.homeWinProb).toFixed(2));
+            }
+            modified = true;
+          }
+        }
+
+        // Sanity Check on Updated Line
+        assertGameSanity(targetGame, weekObj.week);
+
+        if (modified) {
+          gamesUpdated++;
+          slateFileUpdatedCount++;
+          
+          const existingSummary = updatedSummaryList.find(s => s.Week === `Week ${weekObj.week}` && s.Matchup === `${targetGame.awayTeam} @ ${targetGame.homeTeam}`);
+          if (!existingSummary) {
+            const formatMl = (ml) => ml > 0 ? `+${ml}` : `${ml}`;
+            const formatSpread = (sp) => sp > 0 ? `+${sp}` : `${sp}`;
+
+            updatedSummaryList.push({
+              'Week': `Week ${weekObj.week}`,
+              'Matchup': `${targetGame.awayTeam} @ ${targetGame.homeTeam}`,
+              'Old Spread': oldSpread !== null && oldSpread !== undefined ? formatSpread(oldSpread) : 'N/A',
+              'New Spread': formatSpread(targetGame.spread),
+              'Old Total': oldTotal ?? 'N/A',
+              'New Total': targetGame.total,
+              'Home ML': `${targetGame.homeTeam} ${formatMl(targetGame.homeMoneyline)}`,
+              'Away ML': `${targetGame.awayTeam} ${formatMl(targetGame.awayMoneyline)}`,
+              'Bookmaker': matchedLive.bookmaker || 'DraftKings'
+            });
+          }
         }
       }
 
       weekObj.lastSyncedAt = nowIso;
       weekObj.syncStatus = 'COMPLETE';
+      weekObj.offTheBoardCount = missingGames.length;
     }
 
-    // Reconstruct output maintaining schema
+    // Total Games Calculation
     let totalScheduledGames = 0;
     weeks.forEach(w => {
       if (Array.isArray(w.games)) totalScheduledGames += w.games.length;
@@ -656,6 +706,7 @@ async function main() {
           lastSyncedAt: nowIso,
           syncStatus: 'COMPLETE',
           provider: activeProvider,
+          targetWeek: targetWeek,
           totalGames: totalScheduledGames,
           syncedGames: totalScheduledGames,
           weeks: slateData
@@ -665,6 +716,7 @@ async function main() {
           lastSyncedAt: nowIso,
           syncStatus: 'COMPLETE',
           provider: activeProvider,
+          targetWeek: targetWeek,
           totalGames: totalScheduledGames,
           syncedGames: totalScheduledGames,
           weeks: weeks
@@ -674,7 +726,7 @@ async function main() {
     console.log(`💾 Saved ${slateFileUpdatedCount} live odds updates with metadata envelope to: ${slatePath}`);
   }
 
-  // 8. Output Formatted Summary Table
+  // 8. Summary Table
   if (updatedSummaryList.length > 0) {
     console.log('\n📊 Formatted Verification Summary Table:');
     console.table(updatedSummaryList);
@@ -682,7 +734,7 @@ async function main() {
     console.log('\nℹ️ All slate lines are already up to date with live feed.');
   }
 
-  console.log('\n🎉 Live Odds Sync Complete! All completeness gates and sanity assertions passed. 🐾\n');
+  console.log('\n🎉 Hardened Live Odds Sync Complete! All quality gates passed. 🐾\n');
 }
 
 main().catch(err => {
